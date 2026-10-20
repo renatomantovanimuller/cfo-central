@@ -28,6 +28,10 @@ def main(argv: list[str]) -> None:
         return
     cmd, args = argv[0], argv[1:]
     migrate()
+    from app.config.integrations import apply as apply_integrations
+    from app.database.session import session_scope
+    with session_scope() as s:  # credenciais salvas pela tela valem também na linha de comando
+        apply_integrations(s)
     if cmd == "migrate":
         print("schema ok:", get_settings().database_url.split("@")[-1])
     elif cmd == "sync":

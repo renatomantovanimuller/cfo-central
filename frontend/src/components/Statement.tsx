@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { acct, monthLabel, pct } from "../format";
 
@@ -11,6 +11,10 @@ export function Statement({ months, rows, showAv, onCell, totalCol = true }:
   { months: string[]; rows: StmtRow[]; showAv?: boolean; onCell?: (row: StmtRow, month: string | null) => void; totalCol?: boolean }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const flip = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
+  // os meses vão do mais antigo ao atual: rola até o fim para o mês escolhido aparecer sem procurar
+  const wrap = useRef<HTMLDivElement>(null);
+  const lastMonth = months[months.length - 1];
+  useLayoutEffect(() => { if (wrap.current) wrap.current.scrollLeft = wrap.current.scrollWidth; }, [lastMonth, months.length]);
 
   const render = (r: StmtRow, depth: number, path: string): JSX.Element => {
     const k = `${path}/${r.key}`;
@@ -44,7 +48,7 @@ export function Statement({ months, rows, showAv, onCell, totalCol = true }:
   };
 
   return (
-    <div className="table-wrap" style={{ maxHeight: "none" }}>
+    <div className="table-wrap" style={{ maxHeight: "none" }} ref={wrap}>
       <table className="stmt">
         <thead><tr><th>Linha</th>{months.map((m) => <th key={m}>{monthLabel(m)}</th>)}{totalCol && <th className="total-col">Total</th>}</tr></thead>
         <tbody>{rows.map((r) => render(r, 0, ""))}</tbody>

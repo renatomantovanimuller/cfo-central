@@ -16,7 +16,4 @@ $out = $lines | ForEach-Object {
   if ($_ -match '^([A-Z_]+)=(.*)$' -and $vals.ContainsKey($matches[1])) { "$($matches[1])=$($vals[$matches[1]])" } else { $_ }
 }
 [IO.File]::WriteAllLines($envFile, $out, (New-Object System.Text.UTF8Encoding $false))
-if (-not $vals.ContainsKey('PLUGGY_CLIENT_ID')) {
-  Write-Host "[CFO] Preencha PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET no .env que vai abrir."
-  notepad $envFile
-}
+Write-Host "[CFO] .env criado. A chave da Pluggy e o e-mail de alertas são informados na própria tela do app (primeiro acesso)."

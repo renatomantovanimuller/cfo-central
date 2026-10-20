@@ -5,14 +5,21 @@ import { api } from "../api";
 import { Chart, cssVar, kTick } from "../components/Chart";
 import { useMonth } from "../components/Layout";
 import { Delta, Empty, Money, Panel } from "../components/ui";
-import { brl, compact, date, isPartialMonth, monthAxisLabel, monthLabel, monthLong, PARTIAL_OPACITY, pct } from "../format";
+import { ProvisionalBanner, SetupChecklist, Welcome } from "../components/Onboarding";
+import { reviewSummary } from "../components/reviewBadge";
+import { Term } from "../components/Term";
+import { useOnboarding } from "../hooks/useOnboarding";
+import { brl, compact, date, isPartialMonth, monthAxisLabel, monthLabel, monthLong, PARTIAL_OPACITY, pct, prettyName } from "../format";
 
 export default function Dashboard() {
   const { month } = useMonth();
   const nav = useNavigate();
   const q = useQuery({ queryKey: ["overview", month], queryFn: () => api<any>(`/api/overview?month=${month}`) });
   const hist = useQuery({ queryKey: ["bp-history"], queryFn: () => api<any[]>("/api/balance/history?months=12") });
+  const reviews = useQuery({ queryKey: ["reviews-count"], queryFn: () => api<any[]>("/api/reviews") });
+  const ob = useOnboarding();
   const d = q.data;
+  if (ob.data && ob.data.events === 0) return <Welcome />;
   if (!d) return <QueryState q={q} what="o painel">{() => null}</QueryState>;
   const t = d.position.totals;
   const k = d.kpis;
@@ -21,14 +28,17 @@ export default function Dashboard() {
   const classes = Object.entries(d.position.investments_by_class as Record<string, number>).sort((a, b) => b[1] - a[1]);
   const series = d.series as any[];
   const hasData = series.some((s) => s.receita_liquida || s.despesas);
+  const rv = reviewSummary(reviews.data);
 
   return (
     <>
+      <ProvisionalBanner />
+      <SetupChecklist />
       <section className="panel networth">
         <div className="figure">
-          <div className="lbl">Patrimônio líquido hoje</div>
+          <div className="lbl"><Term k="patrimonio">Patrimônio líquido hoje</Term></div>
           <div className={`big ${t.net_worth < 0 ? "neg" : ""}`}>{brl(t.net_worth)}</div>
-          <div className="soft small">Patrimônio líquido de liquidez imediata {brl(t.liquid_net_worth)}</div>
+          <div className="soft small"><Term k="liquidez">Disponível em até 1 dia</Term>: {brl(t.liquid_net_worth)}</div>
           {hist.data && hist.data.length > 1 && (
             <Chart height={120} option={{
               legend: false, grid: { left: 0, right: 0, top: 10, bottom: 0, containLabel: false },
@@ -61,26 +71,26 @@ export default function Dashboard() {
       </section>
 
       <section className="panel strip" aria-label={`Resultado de ${monthLong(month)}`}>
-        <div><div className="lbl">Receita líquida</div><div className="val num" style={{ textAlign: "left" }}>{brl(k.current.receita_liquida)}</div>
+        <div><div className="lbl"><Term k="receita_liquida">Receita líquida</Term></div><div className="val num" style={{ textAlign: "left" }}>{brl(k.current.receita_liquida)}</div>
           <div className="sub"><Delta cur={k.current.receita_liquida} ref_={k.previous.receita_liquida} /> sobre {monthLabel(series[series.length - 2]?.month ?? month)}</div></div>
         <div><div className="lbl">Despesas</div><div className="val num" style={{ textAlign: "left" }}>{brl(k.current.despesas)}</div>
           <div className="sub"><Delta cur={k.current.despesas} ref_={k.previous.despesas} invert /> · média 6m {compact(k.avg6.despesas)}</div></div>
-        <div><div className="lbl">Resultado recorrente</div><div className={`val num ${k.current.resultado < 0 ? "neg" : "pos"}`} style={{ textAlign: "left" }}>{brl(k.current.resultado)}</div>
+        <div><div className="lbl"><Term k="resultado_recorrente">Sobra do mês</Term></div><div className={`val num ${k.current.resultado < 0 ? "neg" : "pos"}`} style={{ textAlign: "left" }}>{brl(k.current.resultado)}</div>
           <div className="sub">média 6m {compact(k.avg6.resultado)}{k.current.extraordinarios ? ` · + ${compact(k.current.extraordinarios)} extraordinário` : ""}</div></div>
-        <div><div className="lbl">Taxa de poupança</div><div className="val" >{pct(k.current.taxa_poupanca, 0)}</div>
+        <div><div className="lbl"><Term k="poupanca">Taxa de poupança</Term></div><div className="val" >{pct(k.current.taxa_poupanca, 0)}</div>
           <div className="sub">média 6m {pct(k.avg6.taxa_poupanca, 0)}</div></div>
-        <div><div className="lbl">Aporte líquido</div><div className="val num" style={{ textAlign: "left" }}>{brl(k.invested_net)}</div>
+        <div><div className="lbl"><Term k="aporte">Investido no mês</Term></div><div className="val num" style={{ textAlign: "left" }}>{brl(k.invested_net)}</div>
           <div className="sub">aplicações menos resgates</div></div>
-        <div><div className="lbl">Capacidade de investir</div><div className={`val num ${d.capacity.median_result_6m < 0 ? "neg" : ""}`} style={{ textAlign: "left" }}>{compact(d.capacity.median_result_6m)}</div>
+        <div><div className="lbl"><Term k="capacidade">Capacidade de investir</Term></div><div className={`val num ${d.capacity.median_result_6m < 0 ? "neg" : ""}`} style={{ textAlign: "left" }}>{compact(d.capacity.median_result_6m)}</div>
           <div className="sub">mediana mensal 6m; {compact(d.capacity.card_commitments_3m)} em parcelas nos próximos 3m</div></div>
       </section>
 
       {d.safe_to_spend && <SafeToSpend s={d.safe_to_spend} onPlan={() => nav("/planejamento")} />}
 
-      {!hasData && <Panel><Empty title="Ainda não há lançamentos">Vá em Conexões, conecte o MeuPluggy e sincronize.</Empty></Panel>}
+      {!hasData && <Panel><Empty title={`Sem lançamentos em ${monthLong(month)}`}>Escolha outro mês no seletor acima ou sincronize para buscar novidades.</Empty></Panel>}
 
-      <div className="grid g-wide">
-        <Panel title="Receitas, despesas e resultado" hint="13 meses, por competência">
+      {hasData && <div className="grid g-wide">
+        <Panel title="Receitas, despesas e resultado" hint={<>13 meses, <Term k="competencia">por competência</Term></>}>
           <Chart height={280} onClick={(p) => p.name && nav(`/dre`)} option={{
             tooltip: { trigger: "axis", valueFormatter: (v: number) => brl(v) },
             xAxis: { type: "category", data: series.map((s) => monthAxisLabel(s.month)) },
@@ -96,15 +106,15 @@ export default function Dashboard() {
           {d.top_categories.length === 0 ? <p className="muted">Sem despesas neste mês.</p> :
             d.top_categories.map((c: any) => (
               <div key={c.id} className="bar-row" style={{ cursor: "pointer", padding: "4px 0" }} onClick={() => nav(`/razao?category=${c.id}&month=${month}`)}>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.name}>{c.name}</span>
                 <div className="bar"><i style={{ width: `${(c.value / d.top_categories[0].value) * 100}%` }} /></div>
                 <Money v={c.value} colored={false} />
               </div>
             ))}
         </Panel>
-      </div>
+      </div>}
 
-      <div className="grid g2">
+      {hasData && <div className="grid g2">
         <Panel title="Ritmo de gastos" hint="acumulado no mês contra o mês anterior">
           <Chart height={240} option={{
             tooltip: { trigger: "axis", valueFormatter: (v: number) => brl(v) },
@@ -120,17 +130,17 @@ export default function Dashboard() {
         <Panel title="Maiores comerciantes" hint={monthLong(month)}>
           {d.top_merchants.length === 0 ? <p className="muted">Sem gastos identificados.</p> : d.top_merchants.map((m: any) => (
             <div key={m.id} className="list-row" style={{ cursor: "pointer" }} onClick={() => nav(`/razao?merchant=${m.id}&month=${month}`)}>
-              <div className="grow"><div className="t">{m.name}</div></div><Money v={m.value} colored={false} />
+              <div className="grow"><div className="t" title={m.name}>{prettyName(m.name)}</div></div><Money v={m.value} colored={false} />
             </div>
           ))}
-          {Object.values(d.reviews_open as Record<string, number>).reduce((a, b) => a + b, 0) > 0 && (
+          {rv.pending > 0 && (
             <p className="note" style={{ marginTop: 10 }}>
-              Há {Object.values(d.reviews_open as Record<string, number>).reduce((a, b) => a + b, 0)} itens para revisar.{" "}
+              {rv.pending} {rv.pending === 1 ? "decisão pendente" : "decisões pendentes"}{rv.notices ? ` e ${rv.notices} ${rv.notices === 1 ? "aviso" : "avisos"}` : ""} na revisão.{" "}
               <a href="/revisao" onClick={(e) => { e.preventDefault(); nav("/revisao"); }}>Abrir revisão</a>
             </p>
           )}
         </Panel>
-      </div>
+      </div>}
     </>
   );
 }
@@ -142,13 +152,16 @@ function SafeToSpend({ s, onPlan }: { s: any; onPlan: () => void }) {
       <div className="safe-main">
         <div className="lbl">Quanto ainda posso gastar em {monthLong(s.mes).split(" ")[0]}</div>
         <div className={`big ${s.disponivel < 0 ? "neg" : ""}`}>{brl(s.disponivel, 0)}</div>
-        <div className="soft small">{s.por_dia !== null ? `${brl(s.por_dia, 0)} por dia nos próximos ${s.dias_restantes} dias` : ""}</div>
+        <div className="soft small">{s.disponivel < 0
+          ? `O mês já passou do previsto em ${brl(-s.disponivel, 0)}. Segure gastos não essenciais até o próximo salário.`
+          : s.por_dia !== null ? `${brl(s.por_dia, 0)} por dia nos próximos ${s.dias_restantes} dias` : ""}</div>
       </div>
       <div className="safe-calc">
         <div className="bar" style={{ height: 12 }}><i style={{ width: `${Math.min(100, used * 100)}%`, background: used > 1 ? "var(--debit)" : undefined }} /></div>
         <dl className="kv" style={{ marginTop: 10 }}>
           <dt>Renda prevista</dt><dd className="num">{brl(s.renda_prevista)}</dd>
-          <dt>− Meta de aporte</dt><dd className="num">{brl(s.meta_aporte)} <button className="btn sm ghost" onClick={onPlan}>ajustar</button></dd>
+          <dt>− Meta de aporte</dt><dd className="num">{brl(s.meta_aporte)} <button className="btn sm ghost" onClick={onPlan}>{s.meta_aporte_origem === "plano" ? "ajustar" : "definir"}</button>
+            {s.meta_aporte_origem === "padrao_limitado" && <div className="note" style={{ whiteSpace: "normal" }}>sugestão limitada ao que sobrou nos últimos meses</div>}</dd>
           <dt>− Gasto até hoje</dt><dd className="num">{brl(s.gasto_ate_hoje)}</dd>
           <dt>− Recorrências a vencer</dt><dd className="num">{brl(s.comprometido)}{s.recorrencias_pendentes.length ? ` (${s.recorrencias_pendentes.length})` : ""}</dd>
         </dl>
@@ -167,7 +180,7 @@ function trimFuture(arr: number[], month: string) {
 function Bar({ label, v, max, soft, debit }: { label: string; v: number; max: number; soft?: boolean; debit?: boolean }) {
   return (
     <div className="bar-row">
-      <span className={soft ? "soft" : ""} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: soft ? 10 : 0 }}>{label}</span>
+      <span className={soft ? "soft" : ""} title={label} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingLeft: soft ? 10 : 0 }}>{label}</span>
       <div className={`bar ${debit ? "debit" : ""}`}><i style={{ width: `${Math.min(100, (Math.abs(v) / max) * 100)}%`, opacity: soft ? .7 : 1 }} /></div>
       <Money v={v} />
     </div>

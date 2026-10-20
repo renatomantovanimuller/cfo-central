@@ -28,7 +28,7 @@ class Pipeline:
         self._client: PluggyClient | None = None
         self._lock = threading.Lock()
         self._ledger_lock = threading.RLock()
-        self.state: dict[str, Any] = {"running": False, "step": None, "last": None}
+        self.state: dict[str, Any] = {"running": False, "step": None, "last": None, "last_error": None}
         self._recent: dict[str, float] = {}
 
     @property
@@ -47,12 +47,15 @@ class Pipeline:
         if not self._lock.acquire(blocking=False):
             return {"status": "busy"}
         try:
-            self.state.update(running=True, step="iniciando")
+            self.state.update(running=True, step="iniciando", last_error=None)
             # ordem: lock de thread (_lock) → _ledger_lock → advisory (entre processos)
             with ExitStack() as stack:
                 stack.enter_context(self._ledger_lock)
                 stack.enter_context(advisory_lock())
                 return self._sync_locked(trigger, item_ids, full)
+        except Exception as exc:
+            self.state["last_error"] = str(exc)[:300]  # a tela mostra o motivo em vez de "concluída"
+            raise
         finally:
             self.state.update(running=False, step=None)
             self._lock.release()

@@ -7,6 +7,8 @@ import { Chart, cssVar, kTick } from "../components/Chart";
 import { useMonth } from "../components/Layout";
 import { Statement, StmtRow } from "../components/Statement";
 import { Panel } from "../components/ui";
+import { ProvisionalBanner } from "../components/Onboarding";
+import { Term } from "../components/Term";
 import { brl, isPartialMonth, monthAxisLabel, PARTIAL_OPACITY } from "../format";
 
 export default function Dre() {
@@ -27,7 +29,7 @@ export default function Dre() {
   if (d.valuation) {
     rows.push({ key: "valuation", label: "Valorização da carteira (estimada)", values: d.valuation.values, italic: true,
       total: Object.values(d.valuation.values as Record<string, number | null>).reduce<number>((a, b) => a + (b ?? 0), 0) });
-    rows.push({ key: "economic", label: "Resultado econômico", values: d.economic_result, subtotal: true, final: true,
+    rows.push({ key: "economic", label: "Resultado econômico (com valorização)", values: d.economic_result, subtotal: true, final: true,
       total: Object.values(d.economic_result as Record<string, number | null>).reduce<number>((a, b) => a + (b ?? 0), 0) });
   }
   const res = d.rows.find((r: any) => r.key === "resultado_liquido");
@@ -38,7 +40,8 @@ export default function Dre() {
   };
   return (
     <>
-      <Panel title="Resultado mês a mês" hint="poupança = resultado recorrente (sem herança/doações); por competência">
+      <ProvisionalBanner />
+      <Panel title="Resultado mês a mês" hint={<>quanto sobrou de cada mês (sem herança/doações), <Term k="competencia">por competência</Term></>}>
         <Chart height={220} option={{
           tooltip: { trigger: "axis", valueFormatter: (v: number) => brl(v) },
           xAxis: { type: "category", data: months.map((m) => monthAxisLabel(m)) },
@@ -49,7 +52,7 @@ export default function Dre() {
           ],
         }} />
       </Panel>
-      <Panel title="Demonstração do resultado" hint="clique numa célula de categoria para ver os lançamentos"
+      <Panel title={<Term k="dre">Demonstração do resultado</Term>} hint="clique num valor de categoria para ver os lançamentos"
         tools={<>
           <div className="segmented">{[6, 12, 24].map((x) => <button key={x} className={n === x ? "on" : ""} onClick={() => setN(x)}>{x} meses</button>)}</div>
           <button className={`btn sm ${av ? "primary" : ""}`} onClick={() => setAv(!av)}>% da receita</button>

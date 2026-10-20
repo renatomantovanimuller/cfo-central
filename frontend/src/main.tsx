@@ -30,25 +30,34 @@ const qc = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: 
 function Login({ setup }: { setup: boolean }) {
   const [username, setU] = useState("");
   const [password, setP] = useState("");
+  const [confirm, setC] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (setup && password !== confirm) { setErr("As senhas não conferem."); return; }
+    setBusy(true);
     try {
       await api(setup ? "/api/auth/setup" : "/api/auth/login", { method: "POST", body: { username, password } });
       location.reload();
-    } catch (ex: any) { setErr(ex.message); }
+    } catch (ex: any) { setErr(ex.status === 401 ? "Usuário ou senha incorretos." : ex.message); setBusy(false); }
   };
   return (
     <div className="login">
       <form onSubmit={submit} className="panel" style={{ padding: 28 }}>
         <div className="brand" style={{ padding: 0 }}><b>CFO Central</b></div>
-        <p>{setup ? "Primeiro acesso: crie o usuário que protege seus dados neste computador." : "Entre para ver seus números."}</p>
+        <p>{setup
+          ? "Bem-vindo! Crie um usuário e uma senha para proteger seus dados neste computador. Em seguida, vamos conectar seus bancos (leva uns 5 minutos)."
+          : "Entre para ver seus números."}</p>
         <label className="field">Usuário<input className="input" value={username} onChange={(e) => setU(e.target.value)} autoFocus required autoComplete="username" /></label>
         <label className="field">Senha{setup && " (mínimo 8 caracteres)"}
           <input className="input" type="password" value={password} onChange={(e) => setP(e.target.value)} required minLength={setup ? 8 : 1}
             autoComplete={setup ? "new-password" : "current-password"} /></label>
-        {err && <span className="neg small">{err}</span>}
-        <button className="btn primary" type="submit">{setup ? "Criar usuário e entrar" : "Entrar"}</button>
+        {setup && <label className="field">Confirme a senha
+          <input className="input" type="password" value={confirm} onChange={(e) => setC(e.target.value)} required minLength={8} autoComplete="new-password" /></label>}
+        {err && <span className="neg small" role="alert">{err}</span>}
+        <button className="btn primary" type="submit" disabled={busy} style={{ justifyContent: "center" }}>{setup ? "Criar usuário e começar" : "Entrar"}</button>
+        {setup && <p className="note" style={{ margin: 0 }}>Não há recuperação de senha por e-mail: anote-a em um lugar seguro.</p>}
       </form>
     </div>
   );

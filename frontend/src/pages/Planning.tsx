@@ -9,7 +9,8 @@ import { Trash2 } from "lucide-react";
 import { api } from "../api";
 import { Chart, cssVar, kTick } from "../components/Chart";
 import { Chip, Money, Panel, useToast } from "../components/ui";
-import { brl, date, monthLabel, pct } from "../format";
+import { brl, date, monthLabel, pct, prettyName } from "../format";
+import { Term } from "../components/Term";
 
 export default function Planning() {
   const q = useQuery({ queryKey: ["planning"], queryFn: () => api<any>("/api/planning") });
@@ -95,7 +96,7 @@ export default function Planning() {
         <Panel title="Gastos recorrentes" hint={`${brl(annual, 0)} por ano`} flush>
           <table className="table"><thead><tr><th>Descrição</th><th className="num">Valor</th><th>Próximo</th><th>Situação</th></tr></thead>
             <tbody>{out.map((r: any) => (
-              <tr key={r.id}><td><div className="strong">{r.description}</div><div className="small muted">{r.occurrences} meses, dia {r.day_of_month}</div></td>
+              <tr key={r.id}><td><div className="strong" title={r.description}>{prettyName(r.description)}</div><div className="small muted">{r.occurrences} meses, dia {r.day_of_month}</div></td>
                 <td><Money v={-r.expected_amount} /></td><td className="soft">{date(r.next_date)}</td>
                 <td>{r.status === "confirmed" ? <Chip tone="green">confirmado</Chip> : (
                   <span className="toolbar" style={{ flexWrap: "nowrap" }}><button className="btn sm" onClick={() => recur.mutate({ id: r.id, status: "confirmed" })}>Confirmar</button>
@@ -105,7 +106,7 @@ export default function Planning() {
         <Panel title="Receitas recorrentes" flush>
           <table className="table"><thead><tr><th>Origem</th><th className="num">Valor médio</th><th>Próximo</th></tr></thead>
             <tbody>{inn.map((r: any) => (
-              <tr key={r.id}><td>{r.description}</td><td><Money v={r.expected_amount} /></td><td className="soft">{date(r.next_date)}</td></tr>))}
+              <tr key={r.id}><td title={r.description}>{prettyName(r.description)}</td><td><Money v={r.expected_amount} /></td><td className="soft">{date(r.next_date)}</td></tr>))}
               {inn.length === 0 && <tr><td colSpan={3} className="muted" style={{ padding: 16 }}>Nenhuma detectada ainda.</td></tr>}</tbody></table>
           {d.budget.length > 0 && <div style={{ padding: "12px 18px" }}><h4 style={{ margin: "0 0 6px" }}>Orçamento do mês</h4>
             {d.budget.map((b: any) => (
@@ -119,11 +120,11 @@ export default function Planning() {
         <Panel title="Plano" hint="usado no 'quanto posso gastar', nas simulações e nos alertas">
           <dl className="kv">
             <dt>Meta de aporte mensal</dt>
-            <dd><MoneyInput width={130} allowNegative={false} ariaLabel="Meta de aporte mensal" placeholder={`padrão ${brl(d.safe_to_spend.meta_aporte, 0)}`} value={plano.meta_aporte_mensal}
-              onChange={(v) => setPlano({ ...plano, meta_aporte_mensal: v })} /> <span className="soft small">vazio = 20% da renda</span></dd>
+            <dd><MoneyInput width={130} allowNegative={false} ariaLabel="Meta de aporte mensal" placeholder={`sugestão ${brl(d.safe_to_spend.meta_aporte, 0)}`} value={plano.meta_aporte_mensal}
+              onChange={(v) => setPlano({ ...plano, meta_aporte_mensal: v })} /> <span className="soft small">vazio = 20% da renda, limitado ao que sobrou nos últimos meses</span></dd>
             <dt>Reserva mínima</dt>
             <dd><NumberInput width={70} required min={0} max={120} ariaLabel="Reserva mínima em meses" value={plano.reserva_meses_minima}
-              onChange={(v) => setPlano({ ...plano, reserva_meses_minima: v })} /> <span className="soft small">meses de custo essencial em liquidez D0/D1</span></dd>
+              onChange={(v) => setPlano({ ...plano, reserva_meses_minima: v })} /> <span className="soft small">meses de <Term k="essenciais">custo essencial</Term> guardados em <Term k="liquidez_d1">liquidez D0/D1</Term></span></dd>
           </dl>
           <button className="btn primary sm" style={{ marginTop: 10 }} disabled={planoInvalid || savePlano.isPending} onClick={() => savePlano.mutate({ aporte: vAporte.value, meses: vMeses.value ?? 6 })}>Salvar plano</button>
           <h4 style={{ margin: "16px 0 4px" }}>Reserva de emergência</h4>

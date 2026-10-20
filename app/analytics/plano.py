@@ -63,7 +63,15 @@ def safe_to_spend(s: Session, today: date | None = None) -> dict:
     recebido = rows["receita_liquida"][month] - bonus[month]
     renda = max(renda_base, recebido)
     p = plan(s)
-    aporte = p["meta_aporte_mensal"] if p["meta_aporte_mensal"] is not None else round(0.2 * renda, 2)
+    if p["meta_aporte_mensal"] is not None:
+        aporte, origem = p["meta_aporte_mensal"], "plano"
+    else:
+        # sem meta definida: 20% da renda, mas nunca mais do que de fato sobrou nos meses anteriores
+        # (sugerir aporte de 20% a quem fecha o mês no vermelho só empurra o "quanto posso gastar" para baixo de zero)
+        sobra = [rows["resultado_liquido"][m] for m in hist]
+        teto = max(0.0, statistics.median(sobra)) if sobra else 0.0
+        aporte = round(min(0.2 * renda, teto), 2)
+        origem = "padrao" if aporte >= round(0.2 * renda, 2) else "padrao_limitado"
 
     gasto = -(s.scalar(select(func.coalesce(func.sum(FinancialEvent.amount), 0.0)).where(
         FinancialEvent.is_removed.is_(False), FinancialEvent.competence_date.between(a, b),
@@ -79,13 +87,13 @@ def safe_to_spend(s: Session, today: date | None = None) -> dict:
     ritmo = gasto / today.day * dias_mes if today.day else gasto
     return {
         "mes": month, "renda_prevista": round(renda, 2), "renda_recebida": round(recebido, 2),
-        "meta_aporte": round(aporte, 2), "gasto_ate_hoje": round(gasto, 2),
+        "meta_aporte": round(aporte, 2), "meta_aporte_origem": origem, "gasto_ate_hoje": round(gasto, 2),
         "recorrencias_pendentes": pendentes, "comprometido": round(comprometido, 2),
         "disponivel": round(disponivel, 2), "por_dia": round(disponivel / dias_rest, 2) if dias_rest > 0 else None,
         "dias_restantes": dias_rest, "projecao_gasto_mes": round(ritmo + comprometido, 2),
         "premissas": [
             "Renda prevista = maior entre a mediana da receita recorrente dos 3 meses anteriores e o já recebido no mês (sem bônus/PLR).",
-            "Meta de aporte = configurada no plano (padrão: 20% da renda prevista).",
+            "Meta de aporte = configurada no plano; sem meta, 20% da renda prevista limitado à sobra mediana dos 3 meses anteriores.",
             "Gasto até hoje = despesas do mês por competência (cartão na data da compra), já descontados reembolsos.",
             "Recorrências pendentes = gastos recorrentes detectados com próxima data ainda neste mês.",
             "Extraordinários (herança, doações) não entram na renda.",
