@@ -1,0 +1,62 @@
+# Publica a vitrine (app com dados fictícios, sem servidor) no GitHub Pages.
+# Uma vez: Settings → Pages → Build and deployment → Source: "GitHub Actions".
+name: Vitrine (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 9 * * 1"  # toda segunda: os meses da vitrine acompanham a data de hoje
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: sqlite:///${{ github.workspace }}/showcase.db
+      SECRET_KEY: vitrine-sem-segredo
+      TZ: America/Sao_Paulo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: pip install -r requirements.txt
+      - name: Build da vitrine
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build:demo
+      # depois do build: o vite limpa a pasta de saída
+      - name: Banco fictício e retrato da API
+        run: |
+          python -m scripts.demo_showcase
+          python -m scripts.demo_snapshot frontend/dist-demo/demo-data.json
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist-demo
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

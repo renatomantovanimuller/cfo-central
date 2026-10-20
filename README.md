@@ -6,6 +6,11 @@ você, fila de revisão, previsão de caixa e **métricas de carteira** (retorno
 
 Especificação completa: [`docs/SPEC.md`](docs/SPEC.md).
 
+**Demonstração:** o workflow `.github/workflows/demo-pages.yml` publica no GitHub Pages uma vitrine do app com
+dados fictícios (sem servidor; alterações não são salvas). Para ativar, uma vez: *Settings → Pages → Source:
+GitHub Actions*. Localmente: `python -m scripts.demo_showcase`, `cd frontend && npm run build:demo`,
+`python -m scripts.demo_snapshot frontend/dist-demo/demo-data.json`.
+
 ## Como rodar
 
 **Com Docker (recomendado — PostgreSQL):** dois cliques em `INICIAR.bat`.
