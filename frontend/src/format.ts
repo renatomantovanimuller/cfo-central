@@ -39,8 +39,13 @@ export const monthLong = (ym: string) => {
   const names = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
   return `${names[+m - 1]} de ${y}`;
 };
+/** "Hoje" do app. A vitrine (src/demo.ts) fixa a data da gravação para os meses baterem com os dados. */
+let fixedToday: Date | null = null;
+export const setToday = (iso: string) => { fixedToday = new Date(`${iso}T12:00:00`); };
+export const today = () => (fixedToday ? new Date(fixedToday) : new Date());
+
 export const thisMonth = () => {
-  const d = new Date();
+  const d = today();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 export const addMonth = (ym: string, n: number) => {

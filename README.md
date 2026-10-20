@@ -101,6 +101,7 @@ ajustes). Reaplique a qualquer momento: `docker compose exec app python -m scrip
 pip install -r requirements.txt pytest
 pytest                                   # 12 testes (SQLite); TEST_DATABASE_URL=postgresql+psycopg://... para Postgres
 python -m scripts.demo_seed              # banco de demonstração com dados fictícios
+python -m scripts.demo_snapshot frontend/dist-demo/demo-data.json   # vitrine estática (após cd frontend && npm run build:demo)
 python -m scripts.cli sync|rebuild|market|summary|export arquivo.xlsx
 uvicorn app.main:app --reload --port 8060
 cd frontend && npm install && npm run dev   # front em :5173 com proxy para :8060

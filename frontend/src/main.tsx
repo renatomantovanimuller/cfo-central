@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, HashRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import "./tokens.css";
 import "./styles.css";
 import { api } from "./api";
+import { DEMO, installDemo } from "./demo";
 import { Layout, MonthProvider } from "./components/Layout";
 import { ToastProvider } from "./components/ui";
 import Dashboard from "./pages/Dashboard";
@@ -102,12 +103,18 @@ function Gate() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+// a vitrine roda sem servidor: rotas no hash (funciona em qualquer hospedagem estática)
+const Router = DEMO ? HashRouter : BrowserRouter;
+
+const render = () => ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={qc}>
       <ToastProvider>
-        <BrowserRouter><Gate /></BrowserRouter>
+        <Router><Gate /></Router>
       </ToastProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );
+
+if (DEMO) installDemo().then(render);
+else render();

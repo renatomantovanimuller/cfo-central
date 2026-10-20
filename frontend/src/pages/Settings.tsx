@@ -9,6 +9,7 @@ import { Trash2 } from "lucide-react";
 import { api } from "../api";
 import { Chip, Money, Panel, useToast } from "../components/ui";
 import { EmailForm, PluggyForm } from "../components/Integrations";
+import { DEMO } from "../demo";
 import { date, dateTime } from "../format";
 
 const CLASSES = ["RF Pós", "RF Pré", "RF IPCA+", "Tesouro Selic", "Tesouro Prefixado", "Tesouro IPCA+", "ETF Renda Fixa",
@@ -96,13 +97,13 @@ export default function SettingsPage() {
           <button className="btn primary" disabled={!m.name || !!vValue.error || addManual.isPending} onClick={() => addManual.mutate()}>Adicionar</button>
         </div>
       </Panel>
-      <Panel title="Exportação">
+      {!DEMO && <Panel title="Exportação">
         <div className="toolbar">
           <a className="btn" href="/api/export.xlsx">Excel com razão, DRE, DFC, balanço e carteira</a>
           <a className="btn" href="/api/export.csv">Razão em CSV</a>
         </div>
         <p className="note">O Excel é bom para puxar na sua planilha via Power Query (Dados &gt; Obter dados &gt; De arquivo).</p>
-      </Panel>
+      </Panel>}
     </>
   );
 }

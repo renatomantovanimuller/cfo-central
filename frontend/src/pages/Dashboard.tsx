@@ -9,7 +9,7 @@ import { ProvisionalBanner, SetupChecklist, Welcome } from "../components/Onboar
 import { reviewSummary } from "../components/reviewBadge";
 import { Term } from "../components/Term";
 import { useOnboarding } from "../hooks/useOnboarding";
-import { brl, compact, date, isPartialMonth, monthAxisLabel, monthLabel, monthLong, PARTIAL_OPACITY, pct, prettyName } from "../format";
+import { brl, compact, date, isPartialMonth, monthAxisLabel, monthLabel, monthLong, PARTIAL_OPACITY, pct, prettyName, today } from "../format";
 
 export default function Dashboard() {
   const { month } = useMonth();
@@ -172,7 +172,7 @@ function SafeToSpend({ s, onPlan }: { s: any; onPlan: () => void }) {
 }
 
 function trimFuture(arr: number[], month: string) {
-  const now = new Date();
+  const now = today();
   const cur = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   return month === cur ? arr.map((v, i) => (i + 1 > now.getDate() ? null : v)) : arr;
 }

@@ -12,6 +12,7 @@ import { api } from "../api";
 import { addMonth, dateTime, monthLabel, monthLong, thisMonth } from "../format";
 import { useToast } from "./ui";
 import { togglePrivate, usePrivacy } from "../privacy";
+import { DEMO } from "../demo";
 
 const MonthCtx = createContext<{ month: string; setMonth: (m: string) => void }>({ month: thisMonth(), setMonth: () => {} });
 export const useMonth = () => useContext(MonthCtx);
@@ -110,13 +111,13 @@ export function Layout() {
             ))}
           </div>
         ))}
-        <div className="sidebar-foot">
+        {DEMO ? <div className="sidebar-foot"><span>Demonstração com dados fictícios.</span></div> : <div className="sidebar-foot">
           <a href="/api/export.xlsx" className="soft" style={{ display: "flex", gap: 8, alignItems: "center", textDecoration: "none" }}>
             <FileSpreadsheet size={15} /> Exportar Excel</a>
           <a href="/api/export.csv" className="soft" style={{ display: "flex", gap: 8, alignItems: "center", textDecoration: "none" }}>
             <Download size={15} /> Exportar razão (CSV)</a>
           <button className="btn ghost sm" onClick={logout} style={{ justifyContent: "flex-start", padding: 0 }}><LogOut size={14} /> Sair</button>
-        </div>
+        </div>}
       </nav>
       <div className="main">
         <header className="topbar">
@@ -140,7 +141,11 @@ export function Layout() {
             : <button className="btn" onClick={() => startSync.mutate()} disabled={running} title="Buscar novidades nos bancos agora">
                 <RefreshCw size={14} className={running ? "spin" : ""} /> <span className="hide-sm">Sincronizar</span></button>}
         </header>
-        <main className="content" key={hidden ? "oculto" : "visivel"}><Outlet /></main>
+        <main className="content" key={hidden ? "oculto" : "visivel"}>
+          {DEMO && <div className="callout info demo-note" role="note"><div className="grow"><b>Demonstração.</b> Pessoa, banco e valores são fictícios.
+            Navegue à vontade: botões de alterar respondem que nada é salvo.</div></div>}
+          <Outlet />
+        </main>
       </div>
     </div>
   );
