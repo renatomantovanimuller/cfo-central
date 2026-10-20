@@ -1,0 +1,12 @@
+[project]
+name = "cfo-central"
+version = "1.0.0"
+description = "Livro razão financeiro pessoal com Open Finance (Pluggy), DRE/DFC/BP e métricas de carteira"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120

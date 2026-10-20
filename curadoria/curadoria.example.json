@@ -1,0 +1,13 @@
+{
+  "_sobre": "Exemplo de curadoria. Copie para curadoria/curadoria.json e aplique: docker compose exec app python -m scripts.cli curate curadoria/curadoria.json",
+  "accounts": [
+    {"match": {"type": "BANK", "name_contains": "Nu Pagamentos"}, "nickname": "Nubank · Conta", "purpose": "corrente"},
+    {"match": {"type": "CREDIT", "number_endswith": "0000"}, "nickname": "Cartão principal", "purpose": "cartao_principal"}
+  ],
+  "merchants": [
+    {"doc": "12345678000190", "name": "Empresa Exemplo LTDA", "category": "rec.salario"},
+    {"doc": "12345678901", "name": "Clínica Exemplo", "category": "saude.consultas"}
+  ],
+  "rules": [],
+  "overrides": []
+}

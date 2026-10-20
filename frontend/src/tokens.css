@@ -1,0 +1,105 @@
+/* CFO Central — tokens de design (auditoria-ux §2.1–2.3).
+   Identidade "papel de razão": verde contábil, tinta esverdeada, Archivo variável.
+   Claro por padrão; escuro por prefers-color-scheme ou por data-theme="dark" em <html>. */
+
+:root {
+  /* ---------- cor: superfícies e texto ---------- */
+  --bg: #f3f5f2;
+  --surface: #fbfcfa;
+  --surface-2: #eef3ef;
+  --border: #d9e0db;
+  --border-strong: #b9c6bf;
+  --text: #14231f;
+  --text-2: #4a5a55;
+  --text-3: #5f6e68;            /* ≥ 4,5:1 sobre --surface */
+
+  /* ---------- cor: marca e semântica ---------- */
+  --brand: #0f5c4a;
+  --brand-ink: #0b4a3b;
+  --brand-soft: #dcebe4;
+  --positive: #0f6b4f;
+  --negative: #b4232c;
+  --negative-soft: #f6e1e0;
+  --warning: #8a6417;            /* texto */
+  --warning-fill: #b7862a;       /* preenchimentos, barras, pontos */
+  --warning-soft: #f4ead2;
+  --info: #2b4c7e;
+  --focus: #2b4c7e;
+
+  /* ---------- cor: dados (gráficos), separada da semântica de UI ---------- */
+  --viz-income: #1f7a5c;
+  --viz-expense: #c0705f;
+  --viz-result: var(--text);
+  --viz-plan: #b7862a;
+  --viz-prior: #8a97a8;
+  --viz-invest: #2b4c7e;
+  --cat-1: #1f7a5c; --cat-2: #2b4c7e; --cat-3: #b7862a; --cat-4: #6b7a90;
+  --cat-5: #8a6fb0; --cat-6: #3f8fa6; --cat-7: #a3785a; --cat-8: #7a8c3c;
+  --viz-div-a: #2b4c7e;          /* divergente: azul → superfície → areia */
+  --viz-div-b: #a3785a;
+
+  /* ---------- tipografia ---------- */
+  --font-sans: "Archivo", system-ui, "Segoe UI", sans-serif;
+  --fs-hero: 40px;   --lh-hero: 1.05;   --fw-hero: 720;
+  --fs-kpi: 24px;    --lh-kpi: 1.15;    --fw-kpi: 650;
+  --fs-h1: 22px;     --lh-h1: 1.2;      --fw-h1: 680;
+  --fs-h2: 15px;     --lh-h2: 1.3;      --fw-h2: 650;
+  --fs-body: 14px;   --lh-body: 1.45;
+  --fs-table: 13.5px; --lh-table: 1.35;
+  --fs-label: 12.5px; --lh-label: 1.35; --fw-label: 550;
+  --fs-note: 12px;   --lh-note: 1.4;
+  --fs-micro: 11px;  --lh-micro: 1.3;   --fw-micro: 600;
+
+  /* ---------- espaçamento (base 4 px) ---------- */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-12: 48px;
+  --gutter: 28px;                /* 16px abaixo de 860px (ver styles.css) */
+  --gap-panels: var(--sp-5);
+
+  /* ---------- raio e elevação ---------- */
+  --r-sm: 3px;                   /* chips */
+  --r-md: 6px;                   /* controles */
+  --r-lg: 8px;                   /* painéis */
+  --shadow-overlay: 0 8px 24px rgb(0 0 0 / .12);   /* só drawer, popover, paleta de comandos */
+
+  /* ---------- breakpoints (referência; media queries não aceitam var()) ---------- */
+  --bp-sm: 600px; --bp-md: 860px; --bp-lg: 1180px; --bp-xl: 1440px;
+
+  color-scheme: light;
+}
+
+/* escuro: segue o sistema, a menos que o tema claro seja forçado */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1714; --surface: #13201c; --surface-2: #172a23;
+    --border: #24352f; --border-strong: #34493f;
+    --text: #e3ece7; --text-2: #a7b6b0; --text-3: #8b9a94;
+    --brand: #4fb394; --brand-ink: #7fd0b4; --brand-soft: #1b3a31;
+    --positive: #5cc49f; --negative: #f07c7c; --negative-soft: #3a1e20;
+    --warning: #d9ae55; --warning-fill: #d9ae55; --warning-soft: #3a2f17;
+    --info: #8fb0e0; --focus: #8fb0e0;
+    --viz-income: #5cc49f; --viz-expense: #e0907f; --viz-plan: #d9ae55;
+    --viz-prior: #6f7d90; --viz-invest: #8fb0e0;
+    --cat-1: #5cc49f; --cat-2: #8fb0e0; --cat-3: #d9ae55; --cat-4: #9aa7ba;
+    --cat-5: #b39ad0; --cat-6: #6bb3c8; --cat-7: #c79a7c; --cat-8: #a0b05c;
+    --viz-div-a: #8fb0e0; --viz-div-b: #c79a7c;
+    color-scheme: dark;
+  }
+}
+
+/* escuro forçado manualmente (alternância de tema virá em outra tarefa) */
+:root[data-theme="dark"] {
+  --bg: #0e1714; --surface: #13201c; --surface-2: #172a23;
+  --border: #24352f; --border-strong: #34493f;
+  --text: #e3ece7; --text-2: #a7b6b0; --text-3: #8b9a94;
+  --brand: #4fb394; --brand-ink: #7fd0b4; --brand-soft: #1b3a31;
+  --positive: #5cc49f; --negative: #f07c7c; --negative-soft: #3a1e20;
+  --warning: #d9ae55; --warning-fill: #d9ae55; --warning-soft: #3a2f17;
+  --info: #8fb0e0; --focus: #8fb0e0;
+  --viz-income: #5cc49f; --viz-expense: #e0907f; --viz-plan: #d9ae55;
+  --viz-prior: #6f7d90; --viz-invest: #8fb0e0;
+  --cat-1: #5cc49f; --cat-2: #8fb0e0; --cat-3: #d9ae55; --cat-4: #9aa7ba;
+  --cat-5: #b39ad0; --cat-6: #6bb3c8; --cat-7: #c79a7c; --cat-8: #a0b05c;
+  --viz-div-a: #8fb0e0; --viz-div-b: #c79a7c;
+  color-scheme: dark;
+}

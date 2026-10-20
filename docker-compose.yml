@@ -1,0 +1,48 @@
+name: cfo-central
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cfo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cfo-local}
+      POSTGRES_DB: cfo
+      TZ: America/Sao_Paulo
+    volumes:
+      - cfo_pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"   # acesso local (Power BI, DBeaver, Excel)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cfo -d cfo"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://cfo:${POSTGRES_PASSWORD:-cfo-local}@db:5432/cfo
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./curadoria:/app/curadoria:ro   # decisões de classificação versionadas (scripts.cli curate)
+    ports:
+      - "127.0.0.1:8060:8000"
+    restart: unless-stopped
+
+  backup:   # pg_dump diário em ./backups, mantém 30 dias
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-cfo-local}
+    volumes:
+      - ./backups:/backups
+    entrypoint: ["/bin/sh", "-c", "while true; do f=/backups/cfo-$$(date +%Y%m%d-%H%M).dump; pg_dump -h db -U cfo -d cfo -Fc -f $$f && echo backup $$f && find /backups -name 'cfo-*.dump' -mtime +30 -delete; sleep 86400; done"]
+    restart: unless-stopped
+
+volumes:
+  cfo_pgdata:
