@@ -1,16 +1,17 @@
 import { QueryState } from "../components/QueryState";
+import { DEMO } from "../demo";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { FileSpreadsheet } from "lucide-react";
 import { api } from "../api";
 import { Chip, Panel } from "../components/ui";
-import { brl, date } from "../format";
+import { brl, date, today } from "../format";
 
 /** Valores neutros; `result` pinta de vermelho só prejuízo (resultado desfavorável), nunca valores de bens, rendimentos ou despesas. */
 const M = ({ v, result = false }: { v: number | null | undefined; result?: boolean }) => <span className={`num ${result && v !== null && v !== undefined && v < 0 ? "neg" : ""}`}>{v === null || v === undefined ? "—" : brl(v)}</span>;
 
 export default function ImpostoRenda() {
-  const now = new Date();
+  const now = today();
   const [ano, setAno] = useState(now.getMonth() >= 2 ? now.getFullYear() : now.getFullYear() - 1);
   const q = useQuery({ queryKey: ["ir", ano], queryFn: () => api<any>(`/api/ir?ano=${ano}`) });
   const r = q.data;
@@ -36,7 +37,7 @@ export default function ImpostoRenda() {
           <div className="sub">código 6015</div></div>
       </section>
 
-      <Panel title="Pendências para completar" tools={<a className="btn sm" href={`/api/ir.xlsx?ano=${ano}`}><FileSpreadsheet size={14} /> Excel</a>}>
+      <Panel title="Pendências para completar" tools={DEMO ? undefined : <a className="btn sm" href={`/api/ir.xlsx?ano=${ano}`}><FileSpreadsheet size={14} /> Excel</a>}>
         <ul className="assumptions" style={{ margin: 0 }}>{r.pendencias.map((p: string, i: number) => <li key={i}>{p}</li>)}</ul>
         <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>{r.aviso}</p>
       </Panel>
