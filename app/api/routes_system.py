@@ -218,3 +218,76 @@ def rebuild() -> dict:
 def market_sync() -> dict:
     res = pipeline.market("manual")
     return {"ok": "error" not in res, "errors": res.get("errors"), "sgs": res.get("sgs")}
+
+
+# ------------------------------------------------------------------ primeiros passos e integrações
+UNCLASSIFIED_INCOME = ("rec.pix_terceiros", "rec.outras")
+
+
+@router.get("/onboarding")
+def onboarding(db: Session = Depends(get_db)) -> dict:
+    """Estado da configuração inicial: o que falta para os números ficarem confiáveis."""
+    from datetime import timedelta
+
+    from sqlalchemy import func
+
+    from app.config.integrations import public_view
+    from app.models import AppSetting, Budget, FinancialEvent, RecurringRule
+    from app.utils.time import today_brt
+
+    since = today_brt() - timedelta(days=95)
+    income = select(func.coalesce(func.sum(FinancialEvent.amount), 0.0)).where(
+        FinancialEvent.is_removed.is_(False), FinancialEvent.event_type == "INCOME",
+        FinancialEvent.competence_date >= since)
+    total_in = db.scalar(income) or 0.0
+    unclassified_in = db.scalar(income.where(FinancialEvent.category_id.in_(UNCLASSIFIED_INCOME))) or 0.0
+    plano = db.get(AppSetting, "plano")
+    integ = public_view(db)
+    return {
+        "pluggy_configured": integ["pluggy"]["configured"],
+        "email_configured": integ["email"]["configured"],
+        "items": db.scalar(select(func.count()).select_from(Item).where(Item.is_active.is_(True))) or 0,
+        "events": db.scalar(select(func.count()).select_from(FinancialEvent).where(FinancialEvent.is_removed.is_(False))) or 0,
+        "budgets": db.scalar(select(func.count()).select_from(Budget)) or 0,
+        "plan_set": bool(plano and plano.value and plano.value.get("meta_aporte_mensal") is not None),
+        "recurring_confirmed": db.scalar(select(func.count()).select_from(RecurringRule)
+                                         .where(RecurringRule.status == "confirmed")) or 0,
+        # receita dos últimos 3 meses que ainda está "a classificar": enquanto for relevante, os resultados são provisórios
+        "income_unclassified": round(unclassified_in, 2),
+        "income_unclassified_share": round(unclassified_in / total_in, 3) if total_in > 0 else 0.0,
+        "sync": pipeline.state,
+    }
+
+
+class IntegrationsBody(BaseModel):
+    pluggy_client_id: str | None = None
+    pluggy_client_secret: str | None = None
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    alert_email_to: str | None = None
+
+
+@router.get("/integrations")
+def integrations(db: Session = Depends(get_db)) -> dict:
+    from app.config.integrations import public_view
+    return public_view(db)
+
+
+@router.put("/integrations")
+def save_integrations(body: IntegrationsBody, db: Session = Depends(get_db)) -> dict:
+    from app.config.integrations import public_view, save
+    save(db, body.model_dump())
+    return public_view(db)
+
+
+@router.post("/integrations/pluggy/test")
+def test_pluggy() -> dict:
+    """Valida a chave da Pluggy pedindo uma API key (não lê dados de nenhum banco)."""
+    try:
+        pipeline.client.api_key(force=True)
+        return {"ok": True}
+    except PluggyError as e:
+        msg = "Client ID ou Secret inválidos." if e.status in (400, 401, 403) else str(e)
+        return {"ok": False, "erro": msg}
+    except Exception as e:  # noqa: BLE001 — rede/DNS: a tela mostra o motivo em vez de um erro 500
+        return {"ok": False, "erro": f"sem conexão com a Pluggy ({e.__class__.__name__})"}

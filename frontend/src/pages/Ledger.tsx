@@ -9,7 +9,8 @@ import { api, qs } from "../api";
 import { EventDrawer } from "../components/EventDrawer";
 import { useMonth } from "../components/Layout";
 import { CategoryOptions, CategorySelect, Chip, Confidence, Empty, EventTypeSelect, Money, Panel, useCategories, useToast } from "../components/ui";
-import { brl, date, EVENT_LABELS, monthLong } from "../format";
+import { brl, date, EVENT_LABELS, monthLong, prettyName } from "../format";
+import { Term } from "../components/Term";
 
 const TONE: Record<string, any> = { INCOME: "green", INVESTMENT_INCOME: "green", EXPENSE: undefined, REFUND: "blue",
   CARD_PAYMENT: "blue", INTERNAL_TRANSFER: "blue", EXTERNAL_OWN_TRANSFER: "blue", INVESTMENT_CONTRIBUTION: "ochre",
@@ -105,27 +106,28 @@ export default function Ledger() {
           <div className="table-wrap">
             <table className="table">
               <thead><tr>
-                <th style={{ width: 28 }}><input type="checkbox" aria-label="Selecionar página"
+                <th style={{ width: 28 }} className="hide-sm"><input type="checkbox" aria-label="Selecionar página"
                   checked={!!d && d.items.length > 0 && d.items.every((r: any) => sel.has(r.id))}
                   onChange={(e) => setSel(e.target.checked ? new Set(d.items.map((r: any) => r.id)) : new Set())} /></th>
-                <th>Data</th><th>Descrição</th><th>Conta</th><th>Categoria</th><th>Tipo</th><th>Confiança</th><th className="num">Valor</th><th />
+                <th>Data</th><th>Descrição</th><th className="hide-sm">Conta</th><th className="hide-sm">Categoria</th><th className="hide-sm">Tipo</th><th className="hide-sm"><Term k="confianca">Confiança</Term></th><th className="num">Valor</th><th className="hide-sm" />
               </tr></thead>
               <tbody>
                 {d?.items.map((r: any) => (
                   <tr key={r.id} className="clickable" onClick={() => setOpen(r.id)} style={{ opacity: r.is_removed ? .5 : 1 }}>
-                    <td onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} aria-label="Selecionar" /></td>
+                    <td className="hide-sm" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} aria-label="Selecionar" /></td>
                     <td className="num" style={{ textAlign: "left" }}>{date(r.date)}</td>
-                    <td className="desc"><div>{(r.description ?? "").split("|")[0]} {r.installment && <Chip>{r.installment}</Chip>} {r.is_pending && <Chip tone="ochre">pendente</Chip>} {r.needs_review && <Chip tone="ochre">revisar</Chip>}</div>
-                      <div className="s">{r.counterparty ?? (r.description ?? "").split("|")[1] ?? ""}{r.note ? `; ${r.note}` : ""}</div></td>
-                    <td className="soft" style={{ whiteSpace: "nowrap" }}>{r.account}</td>
-                    <td onClick={(e) => e.stopPropagation()}>
+                    <td className="desc"><div title={r.description ?? undefined}>{prettyName((r.description ?? "").split("|")[0])} {r.installment && <Chip>{r.installment}</Chip>} {r.is_pending && <Chip tone="ochre">pendente</Chip>} {r.needs_review && <Chip tone="ochre">revisar</Chip>}</div>
+                      <div className="s" title={r.counterparty ?? undefined}>{r.counterparty ? prettyName(r.counterparty) : (r.description ?? "").split("|")[1] ?? ""}{r.note ? `; ${r.note}` : ""}</div>
+                      <div className="s show-sm">{r.category ?? "sem categoria"}</div></td>
+                    <td className="soft hide-sm" style={{ whiteSpace: "nowrap" }}>{r.account}</td>
+                    <td className="hide-sm" onClick={(e) => e.stopPropagation()}>
                       <select className="select inline" value={r.category_id ?? ""} onChange={(e) => patch.mutate({ id: r.id, previous: r.category_id ?? null, body: { category_id: e.target.value, learn: true } })}>
                         {cats.data && <CategoryOptions cats={cats.data} />}
                       </select></td>
-                    <td><Chip tone={TONE[r.event_type]}>{EVENT_LABELS[r.event_type]}</Chip></td>
-                    <td><Confidence v={r.confidence} /></td>
+                    <td className="hide-sm"><Chip tone={TONE[r.event_type]}>{EVENT_LABELS[r.event_type]}</Chip></td>
+                    <td className="hide-sm"><Confidence v={r.confidence} /></td>
                     <td><Money v={r.amount} tone={r.amount > 0 ? "favorable" : "neutral"} /></td>
-                    <td onClick={(e) => e.stopPropagation()}>
+                    <td className="hide-sm" onClick={(e) => e.stopPropagation()}>
                       <button className="btn ghost sm" title="Criar regra a partir deste lançamento"
                         onClick={() => nav(`/regras?pattern=${encodeURIComponent(r.counterparty || r.description)}&category=${r.category_id ?? ""}&field=${r.counterparty ? "merchant" : "description"}`)}><Wand2 size={14} /></button></td>
                   </tr>

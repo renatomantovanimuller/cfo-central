@@ -8,6 +8,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Trash2 } from "lucide-react";
 import { api } from "../api";
 import { Chip, Money, Panel, useToast } from "../components/ui";
+import { EmailForm, PluggyForm } from "../components/Integrations";
 import { date, dateTime } from "../format";
 
 const CLASSES = ["RF Pós", "RF Pré", "RF IPCA+", "Tesouro Selic", "Tesouro Prefixado", "Tesouro IPCA+", "ETF Renda Fixa",
@@ -28,6 +29,7 @@ export default function SettingsPage() {
   const delManual = useApiMutation({ mutationFn: (id: number) => api(`/api/manual-assets/${id}`, { method: "DELETE" }), invalidate: "all", successMessage: "Item removido" });
   const alerts = useQuery({ queryKey: ["alerts"], queryFn: () => api<any>("/api/alerts/status") });
   const toast = useToast();
+  const [editMail, setEditMail] = useState(false);
   const testMail = useApiMutation({ mutationFn: () => api<any>("/api/alerts/test", { method: "POST" }), invalidate: [["alerts"]],
     onSuccess: (r) => toast(r.ok ? "E-mail de teste enviado" : `Falhou: ${r.erro}`, !r.ok) });
   const accounts = (conns.data?.items ?? []).flatMap((i: any) => i.accounts.map((a: any) => ({ ...a, inst: i.institution })));
@@ -40,17 +42,21 @@ export default function SettingsPage() {
       {!conns.data && <QueryState q={conns} what="as contas" layout="panel">{() => null}</QueryState>}
       {!assets.data && <QueryState q={assets} what="os ativos" layout="panel">{() => null}</QueryState>}
       {!manual.data && <QueryState q={manual} what="os ativos manuais" layout="panel">{() => null}</QueryState>}
+      <Panel title="Conexão com os bancos (Pluggy)" hint="chave de leitura do Open Finance; fica só neste computador">
+        <PluggyForm />
+      </Panel>
+
       <Panel title="Alertas por e-mail" hint="resumo diário de alertas novos e fechamento do mês no dia 1">
-        {alerts.data && (alerts.data.configurado ? (
-          <p>Enviando para <b>{alerts.data.para}</b> às {alerts.data.horario}h. <button className="btn sm" onClick={() => testMail.mutate()}>Enviar teste</button></p>
+        {alerts.data?.configurado && !editMail ? (
+          <p style={{ margin: 0 }}>Enviando para <b>{alerts.data.para}</b> às {alerts.data.horario}h.{" "}
+            <button className="btn sm" onClick={() => testMail.mutate()}>Enviar teste</button>{" "}
+            <button className="btn sm ghost" onClick={() => setEditMail(true)}>Alterar</button></p>
         ) : (
-          <div className="note">
-            E-mail ainda não configurado. Para ativar: crie uma senha de app do Google em <b>myaccount.google.com/apppasswords</b>
-            (exige verificação em 2 etapas) e preencha no arquivo <code>.env</code> do CFO Central:
-            <pre style={{ margin: "6px 0" }}>SMTP_USER=seu@gmail.com{"\n"}SMTP_PASSWORD=senha-de-app-de-16-letras</pre>
-            Depois rode <code>INICIAR.bat</code>. Enquanto isso, os alertas continuam na tela de Revisão.
-          </div>
-        ))}
+          <>
+            {!alerts.data?.configurado && <p className="note" style={{ marginTop: 0 }}>Opcional. Sem e-mail, os alertas continuam na tela de Revisão.</p>}
+            <EmailForm />
+          </>
+        )}
         {alerts.data?.ultimos?.length > 0 && <table className="table" style={{ marginTop: 8 }}><tbody>{alerts.data.ultimos.map((n: any, i: number) => (
           <tr key={i}><td className="soft small">{dateTime(n.em)}</td><td>{n.assunto}</td><td>{n.status === "sent" ? <Chip tone="green">enviado</Chip> : <Chip tone="red">erro</Chip>}</td></tr>))}</tbody></table>}
       </Panel>

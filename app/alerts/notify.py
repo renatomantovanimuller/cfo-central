@@ -43,7 +43,7 @@ def _page(title: str, sections: list[tuple[str, str]]) -> str:
 def send_test(s: Session) -> dict:
     st = get_settings()
     if not st.email_enabled:
-        return {"ok": False, "erro": "SMTP_USER/SMTP_PASSWORD não configurados no .env"}
+        return {"ok": False, "erro": "e-mail não configurado (informe em Configurações)"}
     try:
         _send("CFO Central: teste de alerta", _page("Teste de alerta", [("Tudo certo", "<p>Os alertas por e-mail estão funcionando.</p>")]))
         _log(s, f"test:{utcnow().isoformat()}", "teste")

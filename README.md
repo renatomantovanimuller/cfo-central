@@ -9,8 +9,9 @@ Especificação completa: [`docs/SPEC.md`](docs/SPEC.md).
 ## Como rodar
 
 **Com Docker (recomendado — PostgreSQL):** dois cliques em `INICIAR.bat`.
-Na primeira vez ele cria o `.env` (gera senhas locais; preencha as credenciais Pluggy), sobe o Postgres e
-o app e abre `http://127.0.0.1:8060`. Crie seu usuário no primeiro acesso.
+Na primeira vez ele cria o `.env` (gera senhas locais), sobe o Postgres e o app e abre `http://127.0.0.1:8060`.
+Crie seu usuário no primeiro acesso: o Painel vira um passo a passo (chave da Pluggy → conectar banco → importar),
+sem editar arquivo nenhum. A chave da Pluggy e o e-mail de alertas ficam em **Configurações** e valem por cima do `.env`.
 
 | Arquivo | Faz |
 |---|---|
@@ -42,22 +43,29 @@ BCB/SGS (CDI, Selic, IPCA) + Yahoo (ETFs, ações, Ibovespa, S&P, dólar) ──
 
 ## Primeiros 15 minutos (recomendado)
 
-1. **Revisão** → classifique os grupos (um clique vale para todos os lançamentos do comerciante/contraparte). Ex.: o Pix mensal do seu empregador → *Salário/bolsa*.
-2. **Categorias** → defina orçamentos mensais nas categorias que importam.
-3. **Configurações → Ativos** → confira classe e ticker dos investimentos (ex.: um ETF classificado errado).
-4. **Planejamento** → confirme as recorrências e crie metas.
+O Painel mostra um checklist de **Primeiros passos** até tudo estar feito (e um aviso de *números provisórios*
+enquanto a maior parte da renda estiver "a classificar"):
+
+1. **Revisão** → as *decisões rápidas* vêm primeiro (um clique vale para todos os lançamentos da contraparte). Ex.: o Pix mensal do seu empregador → *Salário/bolsa*. Avisos do sistema ficam numa seção separada.
+2. **Conexões** → dê o nome de cada banco (no lugar de "MeuPluggy"); ele aparece na carteira e no IR.
+3. **Categorias** → defina orçamentos mensais nas categorias que importam.
+4. **Configurações → Ativos** → confira classe e ticker dos investimentos (ex.: um ETF classificado errado).
+5. **Planejamento** → defina a meta de aporte, confirme as recorrências e crie metas.
+
+Termos técnicos (DRE, competência, VaR, Sharpe, TIR…) têm explicação ao passar o mouse ou tocar. Funciona no celular.
 
 ## Gestão e planejamento
 
 - **DRE gerencial** (`/dre-gerencial`): mês × média 6m, Δ, % da receita, orçamento e acumulado do ano; resultado
   recorrente separado de itens extraordinários (herança/doações) e indicadores (poupança, reserva em meses, parcelas).
 - **Quanto posso gastar** (Painel): renda prevista (sem bônus) − meta de aporte − gasto do mês − recorrências a vencer.
+  Sem meta definida, a sugestão é 20% da renda limitada à sobra mediana dos 3 meses anteriores.
 - **Política de investimentos** (Planejamento): alocação-alvo por classe com banda ±5 p.p., reserva mínima em meses;
   desvios viram itens de revisão. Metas com **Monte Carlo** (4.000 cenários, risco da carteira).
 - **Retorno por título** (Carteira): aplicado, resgatado, IR/IOF, resultado, TIR e % CDI, inclusive títulos resgatados.
   Custo de renda variável só com evidência (negociação da Pluggy, débito no banco ou estimativa marcada).
-- **Alertas por e-mail**: resumo diário de alertas novos e fechamento no dia 1 (preencha `SMTP_USER`/`SMTP_PASSWORD`
-  no `.env` com uma senha de app do Gmail).
+- **Alertas por e-mail**: resumo diário de alertas novos e fechamento no dia 1 (em **Configurações**, com uma senha
+  de app do Gmail; também aceita `SMTP_USER`/`SMTP_PASSWORD` no `.env`).
 - **Backup automático**: serviço `backup` faz `pg_dump` diário em `backups/` e mantém 30 dias.
 
 ## Assistente integrado (MCP)

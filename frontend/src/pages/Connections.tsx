@@ -5,18 +5,27 @@ import { QueryState } from "../components/QueryState";
 import { useState } from "react";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { api } from "../api";
-import { Chip, Drawer, Money, Panel, useToast } from "../components/ui";
+import { Chip, Drawer, Empty, Money, Panel, useToast } from "../components/ui";
+import { AutoSaveText } from "../components/MoneyInput";
+import { PluggyForm, useIntegrations } from "../components/Integrations";
 import { date, dateTime } from "../format";
 
 declare global { interface Window { PluggyConnect: any } }
 
 const STATUS_TONE: Record<string, any> = { UPDATED: "green", UPDATING: "ochre", LOGIN_ERROR: "red", OUTDATED: "red", WAITING_USER_INPUT: "ochre" };
+const STATUS_LABEL: Record<string, string> = { UPDATED: "atualizado", UPDATING: "atualizando", LOGIN_ERROR: "precisa reconectar",
+  OUTDATED: "desatualizado", WAITING_USER_INPUT: "aguardando você" };
+const ACCOUNT_TYPE: Record<string, string> = { CHECKING_ACCOUNT: "conta corrente", SAVINGS_ACCOUNT: "poupança", CREDIT_CARD: "cartão de crédito",
+  BANK: "conta", CREDIT: "cartão" };
+const RUN_KIND: Record<string, string> = { pluggy: "bancos", market: "cotações", ledger: "razão", alerts: "alertas", health: "saúde" };
 
 export default function Connections() {
   const toast = useToast();
   const [run, setRun] = useState<number | null>(null);
   const [manual, setManual] = useState("");
   const q = useQuery({ queryKey: ["connections"], queryFn: () => api<any>("/api/connections"), refetchInterval: 15_000 });
+  const integ = useIntegrations();
+  const pluggyOk = !!integ.data?.pluggy.configured;
   const sync = useApiMutation({ mutationFn: (body: any) => api<any>("/api/sync", { method: "POST", body }),
     successMessage: (r) => (r.started ? "Sincronização iniciada" : "Já existe uma em andamento") });
   const addItem = useApiMutation({ mutationFn: (itemId: string) => api("/api/items", { method: "POST", body: { itemId } }),
@@ -52,50 +61,67 @@ export default function Connections() {
         </ConfirmDialog>
       )}
       {!d && <QueryState q={q} what="as conexões" layout="panel">{() => null}</QueryState>}
-      <Panel title="Conectar bancos" hint="Open Finance pelo MeuPluggy, gratuito para uso pessoal (até 5 bancos)">
+      {integ.data && !pluggyOk && (
+        <Panel title="Passo 1: chave da Pluggy" hint="necessária uma única vez">
+          <PluggyForm />
+        </Panel>
+      )}
+      <Panel title={pluggyOk ? "Conectar bancos" : "Passo 2: conectar bancos"} hint="Open Finance pelo MeuPluggy, gratuito para uso pessoal (até 5 bancos)">
         <ol className="assumptions" style={{ marginBottom: 12 }}>
-          <li>Autorize cada banco em <a href="https://meu.pluggy.ai" target="_blank" rel="noreferrer">meu.pluggy.ai</a> com o mesmo e-mail do dashboard Pluggy.</li>
-          <li>Clique em Conectar e escolha MeuPluggy. O MeuPluggy compartilha um banco por vez: repita Conectar para cada banco (Nubank, Inter…).</li>
+          <li>Em <a href="https://meu.pluggy.ai" target="_blank" rel="noreferrer">meu.pluggy.ai</a>, entre com o <b>mesmo e-mail</b> da sua conta Pluggy e autorize cada banco.</li>
+          <li>Volte aqui, clique em <b>Conectar</b> e escolha <b>MeuPluggy</b>. Ele compartilha um banco por vez: repita para cada banco (Nubank, Inter…).</li>
+          <li>A primeira importação traz até 12 meses e leva de 1 a 3 minutos por banco. Depois, o app atualiza sozinho a cada {d?.config.sync_hours ?? 4} horas.</li>
         </ol>
         <div className="toolbar">
-          <button className="btn primary" onClick={() => connect()}>Conectar</button>
-          <input className="input" style={{ width: 320 }} placeholder="ou cole um Item ID do dashboard Pluggy" value={manual} onChange={(e) => setManual(e.target.value)} />
-          <button className="btn" disabled={!manual} onClick={() => addItem.mutate(manual.trim())}>Adicionar</button>
-          <span style={{ flex: 1 }} />
-          <button className="btn" onClick={() => market.mutate()} disabled={market.isPending}>Atualizar cotações</button>
-          <button className="btn" onClick={() => setPending({ kind: "rebuild" })} disabled={rebuild.isPending}>Reprocessar razão</button>
+          <button className="btn primary" onClick={() => connect()} disabled={!pluggyOk} title={pluggyOk ? undefined : "Cadastre a chave da Pluggy primeiro"}>Conectar</button>
         </div>
       </Panel>
+      {d && d.items.length === 0 && pluggyOk && <Panel><Empty title="Nenhum banco conectado ainda">Depois de conectar, cada banco aparece aqui com as contas e o saldo lido.</Empty></Panel>}
       {d?.items.map((it: any) => (
         <Panel key={it.id} title={it.nickname ?? it.institution ?? it.id.slice(0, 8)}
-          hint={<>Item {it.id}</>}
+          hint={it.institution && it.institution !== it.nickname ? `via ${it.institution}` : undefined}
           tools={<>
-            <Chip tone={STATUS_TONE[it.status]}>{it.status ?? "?"}</Chip>
+            <Chip tone={STATUS_TONE[it.status]}>{STATUS_LABEL[it.status] ?? it.status ?? "?"}</Chip>
             <button className="btn sm" onClick={() => setPending({ kind: "full", id: it.id, name: it.nickname ?? it.institution ?? it.id.slice(0, 8) })}>Releitura completa</button>
             {["LOGIN_ERROR", "OUTDATED", "WAITING_USER_INPUT"].includes(it.status) && <button className="btn sm primary" onClick={() => connect(it.id)}>Reconectar</button>}
           </>} flush>
           <dl className="kv" style={{ padding: "0 18px 10px" }}>
+            <dt>Nome do banco</dt><dd><AutoSaveText value={it.nickname ?? ""} placeholder="ex.: Nubank" width={200} ariaLabel="Nome do banco"
+              onSave={(v) => api(`/api/items/${it.id}`, { method: "PATCH", body: { nickname: v } })} />
+              {!it.nickname && /pluggy/i.test(it.institution ?? "") && <div className="note">Dê o nome do banco: ele aparece na carteira e no imposto de renda no lugar de "MeuPluggy".</div>}</dd>
             <dt>Pluggy atualizou</dt><dd>{dateTime(it.source_updated_at)}; próxima atualização automática {dateTime(it.next_auto_sync_at)}</dd>
             <dt>Lido aqui</dt><dd>{dateTime(it.last_synced_at)} <Chip tone={it.last_sync_status === "ok" ? "green" : it.last_sync_status ? "ochre" : undefined}>{it.last_sync_status ?? "nunca"}</Chip></dd>
             <dt>Consentimento</dt><dd>válido até {date(it.consent_expires_at)}</dd>
             <dt>Produtos</dt><dd className="small">{(it.products ?? []).join(", ")}</dd>
           </dl>
-          <table className="table"><thead><tr><th>Conta</th><th>Tipo</th><th className="num">Saldo</th><th className="num">Limite</th><th>Transações lidas</th></tr></thead>
+          <div className="table-wrap"><table className="table"><thead><tr><th>Conta</th><th className="hide-sm">Tipo</th><th className="num">Saldo</th><th className="num hide-sm">Limite</th><th className="hide-sm">Transações lidas</th></tr></thead>
             <tbody>{it.accounts.map((a: any) => (
-              <tr key={a.id}><td>{a.nickname ?? a.name} <span className="muted small">{a.number}</span></td><td><Chip>{a.subtype ?? a.type}</Chip></td>
-                <td><Money v={a.type === "CREDIT" ? -(a.balance ?? 0) : a.balance} /></td><td>{a.credit_limit ? <Money v={a.credit_limit} /> : ""}</td>
-                <td className="soft">{dateTime(a.last_tx_sync_at)}</td></tr>))}</tbody></table>
+              <tr key={a.id}><td>{a.nickname ?? a.name} <span className="muted small">{a.number}</span></td><td className="hide-sm"><Chip>{ACCOUNT_TYPE[a.subtype ?? a.type] ?? a.subtype ?? a.type}</Chip></td>
+                <td><Money v={a.type === "CREDIT" ? -(a.balance ?? 0) : a.balance} /></td><td className="hide-sm">{a.credit_limit ? <Money v={a.credit_limit} /> : ""}</td>
+                <td className="soft hide-sm">{dateTime(a.last_tx_sync_at)}</td></tr>))}</tbody></table></div>
         </Panel>
       ))}
-      <Panel title="Execuções" hint="log técnico de sincronizações, mercado e razão" flush>
-        <table className="table"><thead><tr><th>Início</th><th>Rotina</th><th>Gatilho</th><th>Situação</th><th>Resumo</th></tr></thead>
+      <details className="panel">
+        <summary><h2>Avançado</h2><span className="note">ações técnicas e histórico de execuções</span></summary>
+        <div className="panel-body" style={{ display: "grid", gap: 14 }}>
+          <div className="toolbar">
+            <input className="input" style={{ width: 300 }} placeholder="Item ID do dashboard Pluggy" value={manual} onChange={(e) => setManual(e.target.value)} />
+            <button className="btn" disabled={!manual} onClick={() => addItem.mutate(manual.trim())}>Adicionar por ID</button>
+          </div>
+          <div className="toolbar">
+            <button className="btn" onClick={() => market.mutate()} disabled={market.isPending}>Atualizar cotações agora</button>
+            <button className="btn" onClick={() => setPending({ kind: "rebuild" })} disabled={rebuild.isPending}>Reprocessar razão</button>
+            <span className="note">Raramente necessário: o app faz os dois sozinho.</span>
+          </div>
+          {d && <p className="note" style={{ margin: 0 }}>Agendamento: bancos a cada {d.config.sync_hours} h; cotações diariamente às 19h45. Webhooks {d.config.webhooks_enabled ? "ativos" : "desativados (sem URL pública)"}.</p>}
+        </div>
+        <div className="table-wrap"><table className="table"><thead><tr><th>Início</th><th>Rotina</th><th className="hide-sm">Gatilho</th><th>Situação</th><th className="hide-sm">Resumo</th></tr></thead>
           <tbody>{d?.runs.map((r: any) => (
             <tr key={r.id} className="clickable" onClick={() => setRun(r.id)}>
-              <td className="num" style={{ textAlign: "left" }}>{dateTime(r.started_at)}</td><td>{r.kind}</td><td className="soft">{r.trigger}</td>
+              <td className="num" style={{ textAlign: "left" }}>{dateTime(r.started_at)}</td><td>{RUN_KIND[r.kind] ?? r.kind}</td><td className="soft hide-sm">{r.trigger}</td>
               <td><Chip tone={r.status === "ok" ? "green" : r.status === "running" ? "ochre" : "red"}>{r.status}</Chip></td>
-              <td className="small soft">{r.error ?? summary(r)}</td></tr>))}</tbody></table>
-      </Panel>
-      {d && <p className="note">Agendamento: Pluggy a cada {d.config.sync_hours} h; cotações diariamente às 19h45. Webhooks {d.config.webhooks_enabled ? "ativos" : "desativados (sem URL pública)"}.</p>}
+              <td className="small soft hide-sm">{r.error ?? summary(r)}</td></tr>))}</tbody></table></div>
+      </details>
       {run && <RunDrawer id={run} onClose={() => setRun(null)} />}
     </>
   );

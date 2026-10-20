@@ -127,7 +127,9 @@ def bens_e_direitos(s: Session, ano: int, pend: list[str]) -> list[dict]:
     groups: dict[tuple, dict] = {}
     item_inst = {}
     for it in s.scalars(select(Item)):
-        item_inst[it.id] = insts.get(it.institution_id)
+        inst = insts.get(it.institution_id)
+        # o MeuPluggy é o agregador, não o custodiante: sem apelido, cai no nome da conta
+        item_inst[it.id] = it.nickname or (inst if inst and "pluggy" not in inst.lower() else None)
     acc_by_item = {a.item_id: a.name for a in s.scalars(select(Account).where(Account.type == "BANK"))}
     for inv in s.scalars(select(Investment).where(Investment.removed_at.is_(None))):
         a = assets.get(inv.asset_id)
@@ -143,7 +145,7 @@ def bens_e_direitos(s: Session, ano: int, pend: list[str]) -> list[dict]:
             continue  # só entra zerado o título que existia em 31/12 do ano anterior e foi resgatado no ano
         if started and started > ref:
             continue
-        custodian = acc_by_item.get(inv.item_id) or item_inst.get(inv.item_id) or "instituição"
+        custodian = item_inst.get(inv.item_id) or acc_by_item.get(inv.item_id) or "instituição"
         g, c, desc, basis = spec
         if basis == "custo":
             r = rv.get(inv.id, {})

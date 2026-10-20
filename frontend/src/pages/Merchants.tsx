@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { CategoryOptions, Chip, Money, Panel, useCategories, useToast } from "../components/ui";
-import { brl, date } from "../format";
+import { brl, date, prettyName } from "../format";
 
 export default function Merchants() {
   const nav = useNavigate();
@@ -34,7 +34,7 @@ export default function Merchants() {
           <tbody>
             {rows.map((m) => (
               <tr key={m.id} className="clickable" onClick={() => nav(`/razao?merchant=${m.id}&all=1`)}>
-                <td className="strong">{m.name}</td>
+                <td className="strong" title={m.name}>{prettyName(m.name)}</td>
                 <td className="soft small">{m.doc ? (m.doc.length === 14 ? "CNPJ " : "CPF ") + m.doc : "—"}</td>
                 <td className="num">{m.count}</td>
                 <td><Money v={m.avg_ticket} /></td>

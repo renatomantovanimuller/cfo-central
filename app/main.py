@@ -59,6 +59,9 @@ def start_scheduler():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     migrate()
+    from app.config.integrations import apply as apply_integrations
+    with session_scope() as s:
+        apply_integrations(s)
     sched = start_scheduler() if get_settings().scheduler_enabled else None
     yield
     if sched:

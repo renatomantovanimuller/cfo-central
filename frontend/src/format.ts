@@ -150,3 +150,32 @@ export function validateNumber(raw: string, rules: NumberRules = {}, parse: (s: 
 export const formatInputNumber = (v: number | null | undefined) =>
   v === null || v === undefined || Number.isNaN(v) ? "" :
   v.toLocaleString("pt-BR", { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 });
+
+/* ---------- nomes de comerciantes e contrapartes ---------- */
+
+const KEEP_UPPER = new Set(["S.A.", "SA", "S/A", "LTDA", "ME", "EPP", "EIRELI", "CDB", "LCI", "LCA", "CDI", "FII", "ETF", "IPCA", "PIX",
+  "TED", "DOC", "IOF", "IR", "BB", "XP", "BTG", "C6", "CPFL", "CEMIG", "SABESP", "IPVA", "IPTU", "DARF", "INSS", "FGTS", "MEI", "PJ", "PF"]);
+const LOWER = new Set(["de", "da", "do", "das", "dos", "e", "em", "a", "o", "para", "por", "com"]);
+// prefixos de adquirentes/gateways que aparecem no extrato antes do nome real: "IFD*RESTAURANTE", "PG *LOJA", "MP*VENDEDOR"
+const GATEWAY = /^(ifd|pg|mp|pag|ppro|ebn|dl|ec|pagseguro|mercadopago|sumup|stone|cielo)\s*\*\s*/i;
+
+/**
+ * Nome legível para exibição: tira prefixos de gateway ("Ifd*", "PG *"), troca "*" solto por espaço e converte
+ * TUDO MAIÚSCULO em Título ("IMOBILIARIA CENTRO" → "Imobiliaria Centro"), mantendo siglas (LTDA, S.A., CDB).
+ * Nomes que já vêm com caixa mista ficam como estão. O original continua disponível (use como `title`).
+ */
+export function prettyName(raw: string | null | undefined): string {
+  if (!raw) return "";
+  let s = raw.trim().replace(GATEWAY, "").replace(/\s*\*\s*/g, " ").replace(/\s{2,}/g, " ");
+  const letters = s.replace(/[^A-Za-zÀ-ÿ]/g, "");
+  if (letters.length > 3 && letters === letters.toUpperCase()) {
+    s = s.split(" ").map((w, i) => {
+      const up = w.toUpperCase();
+      if (KEEP_UPPER.has(up) || /\d/.test(w) && w.length <= 4) return up;
+      const low = w.toLowerCase();
+      if (i > 0 && LOWER.has(low)) return low;
+      return low.charAt(0).toUpperCase() + low.slice(1);
+    }).join(" ");
+  }
+  return s;
+}

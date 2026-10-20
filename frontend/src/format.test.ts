@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBRL, parseIntStrict, validateNumber } from "./format";
+import { parseBRL, parseIntStrict, prettyName, validateNumber } from "./format";
 
 describe("parseBRL", () => {
   it.each([
@@ -61,5 +61,22 @@ describe("validateNumber", () => {
     expect(validateNumber("-5", { allowNegative: false }).error).toMatch(/negativo/);
     expect(validateNumber("150", { max: 100 }).error).toMatch(/máximo/);
     expect(validateNumber("1.234,56").value).toBe(1234.56);
+  });
+});
+
+describe("prettyName", () => {
+  it("converte caixa alta em título e preserva siglas", () => {
+    expect(prettyName("IMOBILIARIA CENTRO LOCACOES")).toBe("Imobiliaria Centro Locacoes");
+    expect(prettyName("ACME CONSULTORIA LTDA")).toBe("Acme Consultoria LTDA");
+    expect(prettyName("COMPANHIA PAULISTA DE FORCA E LUZ")).toBe("Companhia Paulista de Forca e Luz");
+  });
+  it("remove prefixo de gateway e asteriscos", () => {
+    expect(prettyName("Ifd*Restaurante Sabor")).toBe("Restaurante Sabor");
+    expect(prettyName("Uber *Trip")).toBe("Uber Trip");
+    expect(prettyName("PG *LOJA BOA")).toBe("Loja Boa");
+  });
+  it("mantém nomes com caixa mista e vazios", () => {
+    expect(prettyName("Smart Fit")).toBe("Smart Fit");
+    expect(prettyName(null)).toBe("");
   });
 });

@@ -23,7 +23,7 @@ class PluggyError(RuntimeError):
 class PluggyClient:
     def __init__(self, client_id: str, client_secret: str, timeout: float = 45):
         if not client_id or not client_secret:
-            raise PluggyError(0, "PLUGGY_CLIENT_ID/SECRET ausentes no .env")
+            raise PluggyError(0, "credenciais da Pluggy não configuradas (informe em Configurações)")
         self._cid, self._secret = client_id, client_secret
         self._http = httpx.Client(base_url=BASE_URL, timeout=timeout)
         self._key: str | None = None

@@ -30,7 +30,9 @@ export const kTick = (v: number) => {
   if (isPrivate()) return MASK;
   const a = Math.abs(v), sign = v < 0 ? "−" : "";
   const fmt = (x: number, unit: string) => `${sign}${x.toFixed(1).replace(/\.0$/, "").replace(".", ",")} ${unit}`;
-  return a >= 1e6 ? fmt(a / 1e6, "mi") : a >= 1e3 ? fmt(a / 1e3, "mil") : `${sign}${Math.round(a)}`;
+  if (a >= 1e6) return fmt(a / 1e6, "mi");
+  if (a >= 1e3) return fmt(a / 1e3, "mil");
+  return `${sign}${Number.isInteger(a) ? a : a.toFixed(a < 10 ? 1 : 0).replace(".", ",")}`;
 };
 
 /** Mantém a cor da legenda (itemStyle) igual à da série (lineStyle), sem alterar o objeto original. */
