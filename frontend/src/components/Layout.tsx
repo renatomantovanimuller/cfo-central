@@ -6,7 +6,7 @@ import { reviewSummary } from "./reviewBadge";
 import { useOnboarding } from "../hooks/useOnboarding";
 import {
   ArrowLeftRight, BookOpen, ClipboardList, CalendarRange, ChevronLeft, ChevronRight, CreditCard, Download, Eye, EyeOff, FileSpreadsheet, Gauge,
-  Inbox, Landmark, Layers, LineChart, ListTree, LogOut, Menu, PlugZap, Receipt, RefreshCw, Scale, Settings2, ShieldCheck, Store, Wallet, Wand2, X } from "lucide-react";
+  Inbox, Landmark, Layers, LineChart, ListTree, LogOut, Menu, PlugZap, Receipt, RefreshCw, Scale, Settings2, ShieldCheck, Store, Sun, Wallet, Wand2, X } from "lucide-react";
 import { api } from "../api";
 import { addMonth, dateTime, monthLabel, monthLong, thisMonth } from "../format";
 import { useToast } from "./ui";
@@ -23,7 +23,8 @@ export function MonthProvider({ children }: { children: ReactNode }) {
 
 // ordem pensada para o uso diário: primeiro o que pede ação (Revisão), depois os números, por fim a configuração
 const NAV: { group: string; items: { to: string; label: string; icon: any; badge?: boolean; hint?: string }[] }[] = [
-  { group: "Visão", items: [{ to: "/", label: "Painel", icon: Gauge }, { to: "/revisao", label: "Revisão", icon: Inbox, badge: true },
+  { group: "Visão", items: [{ to: "/", label: "Hoje", icon: Sun, hint: "O que saber e fazer ao começar o dia" },
+    { to: "/painel", label: "Painel", icon: Gauge }, { to: "/revisao", label: "Revisão", icon: Inbox, badge: true },
     { to: "/razao", label: "Lançamentos", icon: Layers }] },
   { group: "Resultados", items: [
     { to: "/dre", label: "Resultado do mês", icon: BookOpen, hint: "DRE: receitas menos despesas, mês a mês" },
@@ -42,12 +43,12 @@ const NAV: { group: string; items: { to: string; label: string; icon: any; badge
 ];
 
 const TITLES: Record<string, string> = {
-  "/": "Painel", "/dre": "Resultado do mês (DRE)", "/dre-gerencial": "Resultado gerencial", "/dfc": "Fluxo de caixa", "/balanco": "Balanço patrimonial",
+  "/": "Hoje", "/painel": "Painel", "/dre": "Resultado do mês (DRE)", "/dre-gerencial": "Resultado gerencial", "/dfc": "Fluxo de caixa", "/balanco": "Balanço patrimonial",
   "/razao": "Lançamentos", "/categorias": "Categorias e orçamento", "/comerciantes": "Comerciantes", "/regras": "Regras de classificação",
   "/revisao": "Revisão", "/patrimonio": "Patrimônio e bolsos", "/carteira": "Carteira", "/cartoes": "Cartões", "/planejamento": "Planejamento",
   "/conexoes": "Conexões", "/config": "Configurações", "/saude": "Saúde dos dados", "/imposto-de-renda": "Imposto de renda",
 };
-const MONTHLESS = new Set(["/patrimonio", "/balanco", "/regras", "/revisao", "/carteira", "/cartoes", "/planejamento", "/conexoes", "/config", "/comerciantes", "/saude", "/imposto-de-renda"]);
+const MONTHLESS = new Set(["/", "/patrimonio", "/balanco", "/regras", "/revisao", "/carteira", "/cartoes", "/planejamento", "/conexoes", "/config", "/comerciantes", "/saude", "/imposto-de-renda"]);
 
 export function Layout() {
   const { month, setMonth } = useMonth();

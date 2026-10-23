@@ -185,6 +185,32 @@ def planning(db: Session = Depends(get_db)) -> dict:
             "aumentos": PL.salary_raises(db)}
 
 
+@router.get("/today")
+def today_view(db: Session = Depends(get_db)) -> dict:
+    from app.analytics.hoje import today_view as TV
+    return P._clean(TV(db))
+
+
+class AckBody(BaseModel):
+    missao: str
+
+
+@router.post("/today/ack")
+def today_ack(body: AckBody, db: Session = Depends(get_db)) -> dict:
+    from app.analytics.hoje import acknowledge
+    acknowledge(db, body.missao[:40])
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/today/checkin")
+def today_checkin(db: Session = Depends(get_db)) -> dict:
+    from app.analytics.hoje import check_in
+    res = check_in(db)
+    db.commit()
+    return res
+
+
 @router.get("/financial-health")
 def financial_health(db: Session = Depends(get_db)) -> dict:
     from app.analytics.saude_financeira import financial_health as FH

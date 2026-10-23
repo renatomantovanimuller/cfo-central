@@ -26,6 +26,8 @@ import SettingsPage from "./pages/Settings";
 import SaudeDados from "./pages/SaudeDados";
 import ImpostoRenda from "./pages/ImpostoRenda";
 import Patrimony from "./pages/Patrimony";
+import Today from "./pages/Today";
+import { useOnboarding } from "./hooks/useOnboarding";
 
 const qc = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1, staleTime: 15_000 } } });
 
@@ -80,7 +82,8 @@ function Gate() {
     <MonthProvider>
       <Routes>
         <Route element={<Layout />}>
-          <Route index element={<Dashboard />} />
+          <Route index element={<Home />} />
+          <Route path="painel" element={<Dashboard />} />
           <Route path="dre" element={<Dre />} />
           <Route path="dre-gerencial" element={<DreGerencial />} />
           <Route path="dfc" element={<Dfc />} />
@@ -107,6 +110,13 @@ function Gate() {
 
 // a vitrine roda sem servidor: rotas no hash (funciona em qualquer hospedagem estática)
 const Router = DEMO ? HashRouter : BrowserRouter;
+
+/** Início: a tela Hoje quando já há dados; antes disso, o Painel com o passo a passo de configuração. */
+function Home() {
+  const ob = useOnboarding();
+  if (!ob.data) return null;
+  return ob.data.events > 0 ? <Today /> : <Dashboard />;
+}
 
 const render = () => ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

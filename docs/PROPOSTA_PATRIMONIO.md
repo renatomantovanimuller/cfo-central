@@ -93,6 +93,13 @@ PL projetado em 1, 5 e 10 anos com o aporte do plano e o retorno esperado (real)
 O Monte Carlo já existe em `plano.monte_carlo`. Responde "quando chego a R$ X?" e alimenta a meta de independência
 financeira.
 
+## Status (out/2026)
+
+Implementado: C1, C2, C3, C4, C5, C6, C8 e P1–P8, mais a tela **Hoje** (início do dia gamificado: missões
+com XP, inventário, novidades, ontem, próximos 7 dias, conquistas e sequência de dias). C7 não procedia.
+Testes em `tests/unit/test_patrimonio.py` e `tests/unit/test_hoje.py`; migrações `0005` (bolsos e metas) e
+`0006` (histórico dos itens manuais).
+
 ## Prioridade sugerida
 
 | Lote | Itens | Por quê |

@@ -370,3 +370,34 @@ a.btn.primary { color: #fff; }
 .slot.free { border-style: dashed; }
 .slot-head { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
 .slot .btn { justify-self: start; }
+
+/* tela Hoje: HUD, missões, inventário e conquistas */
+.hud { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 16px 20px; }
+.hud-main { display: grid; gap: 8px; min-width: 0; }
+.hud-hello { font-size: 20px; font-weight: 680; }
+.hud-stats { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.hud-stat { display: inline-flex; gap: 6px; align-items: center; font-weight: 620; }
+.hud-xp { width: 160px; height: 8px; border-radius: 4px; background: var(--band); overflow: hidden; }
+.hud-xp > i { display: block; height: 100%; background: var(--ochre); }
+.hud-done { display: inline-flex; gap: 8px; align-items: center; color: var(--ledger); font-weight: 650; }
+.quest { display: flex; gap: 12px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--rule); }
+.quest:last-child { border-bottom: 0; }
+.quest .t { font-weight: 600; }
+.quest .s { font-size: var(--fs-label); color: var(--ink-3); }
+.quest.done .t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--rule); }
+.inv { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.inv-slot { display: grid; gap: 4px; justify-items: start; text-align: left; padding: 10px 12px; border: 1px solid var(--rule);
+  border-radius: var(--r-md); background: var(--paper); color: inherit; font: inherit; cursor: pointer; }
+.inv-slot:hover { border-color: var(--ledger); }
+.inv-slot .val { font-size: 18px; font-weight: 700; }
+.inv-slot .bar { width: 100%; display: block; }
+.pips { display: flex; gap: 4px; }
+.pips > i { width: 18px; height: 6px; border-radius: 3px; background: var(--band); }
+.pips > i.on { background: var(--ledger); }
+.inv-bolsos { margin-top: 12px; display: grid; gap: 2px; }
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.badge { display: grid; gap: 2px; justify-items: start; padding: 10px 12px; border: 1px dashed var(--rule); border-radius: var(--r-md);
+  color: var(--ink-3); }
+.badge span { font-size: var(--fs-label); }
+.badge.on { border-style: solid; border-color: var(--ochre); color: var(--ink); background: color-mix(in srgb, var(--ochre) 8%, var(--paper)); }
+.badge.on svg { color: var(--ochre); }
