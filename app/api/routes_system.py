@@ -154,7 +154,9 @@ def delete_item(item_id: str, remote: bool = False, db: Session = Depends(get_db
 
 @router.get("/connections")
 def connections(db: Session = Depends(get_db)) -> dict:
+    from app.accounting.institutions import institution_labels
     insts = {i.id: i for i in db.scalars(select(Institution))}
+    labels = institution_labels(db)
     sets = {x.account_id: x for x in db.scalars(select(AccountSetting))}
     items = []
     for it in db.scalars(select(Item).order_by(Item.first_seen_at)):
@@ -167,6 +169,7 @@ def connections(db: Session = Depends(get_db)) -> dict:
                  "last_tx_sync_at": a.last_tx_sync_at, "removed": a.removed_at is not None}
                 for a in db.scalars(select(Account).where(Account.item_id == it.id))]
         items.append({"id": it.id, "nickname": it.nickname, "institution": inst.name if inst else None,
+                      "label": labels.get(it.id),
                       "image_url": inst.image_url if inst else None, "color": inst.primary_color if inst else None,
                       "is_sandbox": inst.is_sandbox if inst else False, "status": it.status,
                       "execution_status": it.execution_status, "consent_expires_at": it.consent_expires_at,

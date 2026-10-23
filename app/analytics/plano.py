@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import calendar
 import statistics
-from datetime import date
+from datetime import date, timedelta
 
 import numpy as np
 from sqlalchemy import func, select
@@ -20,8 +20,15 @@ PLAN_DEFAULTS = {
     "reserva_meses_minima": 6,       # meses de custo essencial que devem estar em liquidez D0/D1
     "limite_fgc": 250000.0,
     "retorno_esperado_aa": None,     # None = usa o histórico ex-ante da carteira
+    "aumento_para_aporte": None,     # fração de cada aumento de renda que vai para o aporte (None = desligado)
+    "score_credito": None,           # informado pelo usuário (o Open Finance não traz); entra na saúde financeira
 }
 EXPENSE_LIKE = ("EXPENSE", "FINANCIAL_EXPENSE", "TAX", "REFUND")
+ANNUAL_DAYS = 300  # recorrência com intervalo a partir disso é anual (provisionada mês a mês)
+# degraus da reserva: o colchão pequeno é o que mais pesa no bem-estar (Vanguard, 2024); depois 3 meses e a meta
+RESERVE_STEPS = [("Colchão inicial", 1.0), ("Três meses", 3.0)]
+# banda de rebalanceamento "5/25": 5 p.p. ou 25% do alvo, o que for menor (classes pequenas não ficam sem controle)
+BAND_ABS, BAND_REL = 0.05, 0.25
 
 
 def get_setting(s: Session, key: str, defaults: dict | None = None) -> dict:
@@ -76,12 +83,18 @@ def safe_to_spend(s: Session, today: date | None = None) -> dict:
     gasto = -(s.scalar(select(func.coalesce(func.sum(FinancialEvent.amount), 0.0)).where(
         FinancialEvent.is_removed.is_(False), FinancialEvent.competence_date.between(a, b),
         FinancialEvent.event_type.in_(EXPENSE_LIKE))) or 0.0)
-    pendentes = []
+    pendentes, provisoes = [], []
     for r in s.scalars(select(RecurringRule).where(RecurringRule.direction == "out", RecurringRule.status != "ignored")):
-        if r.next_date and today <= r.next_date <= b and (r.last_date is None or r.last_date < a):
+        paid_this_month = r.last_date is not None and r.last_date >= a
+        if r.next_date and today <= r.next_date <= b and not paid_this_month:
             pendentes.append({"descricao": r.description, "valor": r.expected_amount, "data": r.next_date})
+        elif (r.frequency_days or 30) >= ANNUAL_DAYS and r.next_date and r.next_date > b and not paid_this_month:
+            # custo verdadeiro: a despesa anual de daqui a meses já consome 1/12 da renda deste mês
+            provisoes.append({"descricao": r.description, "valor": round(r.expected_amount / 12, 2),
+                              "anual": r.expected_amount, "data": r.next_date})
     comprometido = sum(x["valor"] for x in pendentes)
-    disponivel = renda - aporte - gasto - comprometido
+    provisao = sum(x["valor"] for x in provisoes)
+    disponivel = renda - aporte - gasto - comprometido - provisao
     dias_rest = (b - today).days + 1
     dias_mes = calendar.monthrange(today.year, today.month)[1]
     ritmo = gasto / today.day * dias_mes if today.day else gasto
@@ -89,6 +102,7 @@ def safe_to_spend(s: Session, today: date | None = None) -> dict:
         "mes": month, "renda_prevista": round(renda, 2), "renda_recebida": round(recebido, 2),
         "meta_aporte": round(aporte, 2), "meta_aporte_origem": origem, "gasto_ate_hoje": round(gasto, 2),
         "recorrencias_pendentes": pendentes, "comprometido": round(comprometido, 2),
+        "provisoes_anuais": sorted(provisoes, key=lambda x: x["data"]), "provisao": round(provisao, 2),
         "disponivel": round(disponivel, 2), "por_dia": round(disponivel / dias_rest, 2) if dias_rest > 0 else None,
         "dias_restantes": dias_rest, "projecao_gasto_mes": round(ritmo + comprometido, 2),
         "premissas": [
@@ -96,15 +110,176 @@ def safe_to_spend(s: Session, today: date | None = None) -> dict:
             "Meta de aporte = configurada no plano; sem meta, 20% da renda prevista limitado à sobra mediana dos 3 meses anteriores.",
             "Gasto até hoje = despesas do mês por competência (cartão na data da compra), já descontados reembolsos.",
             "Recorrências pendentes = gastos recorrentes detectados com próxima data ainda neste mês.",
-            "Extraordinários (herança, doações) não entram na renda.",
+            "Provisão anual = 1/12 das despesas anuais previstas (IPVA, IPTU, seguro, anuidade…) que vencem nos "
+            "próximos meses; no mês do vencimento entra o valor cheio como recorrência pendente.",
+            "Extraordinários (herança, doações) e entradas ainda a classificar (Pix de terceiros) "
+            "não entram na renda.",
         ],
     }
 
 
+# ------------------------------------------------------------------ poupar mais amanhã (aumentos de renda)
+RAISE_MIN_PCT, RAISE_MIN_BRL = 0.05, 100.0
+
+
+def salary_raise(s: Session, today: date | None = None) -> dict | None:
+    """Aumento de renda recorrente: os 2 últimos meses fechados de salário acima do patamar anterior (mediana dos
+    4 meses antes deles, ou o nível do último aumento já aplicado). Exigir 2 meses evita 13º, férias e bônus."""
+    today = today or today_brt()
+    months = month_list(month_add(month_key(today), -1), 6)
+    start = month_bounds(months[0])[0]
+    totals = {m: 0.0 for m in months}
+    for amt, dt in s.execute(select(FinancialEvent.amount, FinancialEvent.competence_date).where(
+            FinancialEvent.is_removed.is_(False), FinancialEvent.category_id == "rec.salario",
+            FinancialEvent.event_type == "INCOME", FinancialEvent.competence_date >= start,
+            FinancialEvent.competence_date <= month_bounds(months[-1])[1])):
+        totals[month_key(dt)] += amt
+    vals = [totals[m] for m in months]
+    before = [v for v in vals[:-2] if v > 0]
+    if len(before) < 4 or min(vals[-2:]) <= 0:
+        return None
+    applied = get_setting(s, "aumentos", {"aplicados": []})["aplicados"]
+    ref = max(statistics.median(before), max((a["depois"] for a in applied), default=0.0))
+    recent = min(vals[-2:])
+    if recent < ref * (1 + RAISE_MIN_PCT) or recent - ref < RAISE_MIN_BRL:
+        return None
+    return {"mes": months[-2], "antes": round(ref, 2), "depois": round(recent, 2), "aumento": round(recent - ref, 2)}
+
+
+def salary_raises(s: Session) -> dict:
+    return {"fracao": plan(s)["aumento_para_aporte"], "detectado": salary_raise(s),
+            "aplicados": get_setting(s, "aumentos", {"aplicados": []})["aplicados"][-12:]}
+
+
+def salary_raise_reviews(s: Session) -> list[ReviewCandidate]:
+    """Com a regra ligada, sobe a meta de aporte uma vez por aumento (pré-compromisso: a decisão foi tomada antes
+    do dinheiro chegar). Desligada, pergunta na Revisão."""
+    r = salary_raise(s)
+    if r is None:
+        return []
+    p = plan(s)
+    frac = p["aumento_para_aporte"]
+    if frac is None:
+        return [ReviewCandidate(
+            f"raise:{round(r['depois'], -2):.0f}", "salary_raise", "warn", "plan", "aporte",
+            f"Sua renda recorrente subiu {fmt_brl(r['aumento'])}/mês "
+            f"(de {fmt_brl(r['antes'])} para {fmt_brl(r['depois'])})",
+            "Quer que parte de cada aumento vá automaticamente para o aporte? Defina a fração em Planejamento → "
+            "Plano. Decidir antes de se acostumar com o dinheiro novo é o que mais faz a poupança crescer.",
+            {"amount": r["aumento"]})]
+    extra = round(frac * r["aumento"], 2) if p["meta_aporte_mensal"] is not None else 0.0
+    if extra:
+        put_setting(s, "plano", {"meta_aporte_mensal": round(p["meta_aporte_mensal"] + extra, 2)})
+    hist = get_setting(s, "aumentos", {"aplicados": []})["aplicados"]
+    put_setting(s, "aumentos", {"aplicados": [*hist, {**r, "acrescimo_aporte": extra,
+                                                       "aplicado_em": today_brt().isoformat()}]})
+    detail = (f"Meta de aporte subiu {fmt_brl(extra)} ({frac:.0%} do aumento), como você definiu no plano."
+              if extra else "Sua meta de aporte é a automática (20% da renda), que já acompanha o aumento.")
+    return [ReviewCandidate(f"raise_applied:{r['mes']}", "salary_raise_applied", "info", "plan", "aporte",
+                            f"Aumento de {fmt_brl(r['aumento'])}/mês detectado", detail, {"amount": r["aumento"]})]
+
+
 # ------------------------------------------------------------------ política de investimentos
-def policy_report(s: Session) -> dict:
+def reserve_status(s: Session, pos: dict, minimo_meses: float) -> dict:
+    """Reserva de emergência em degraus (colchão inicial → 3 meses → meta do plano), em meses de custo essencial.
+    Custo essencial = média dos meses fechados com dado (meses anteriores ao histórico não entram como zero)."""
+    from app.accounting.management import reserva_liquida
+    hist = month_list(month_add(month_key(today_brt()), -1), 6)
+    d = dre(s, hist, with_valuation=False)
+    ess = [-v for v in next(r for r in d["rows"] if r["key"] == "essenciais")["values"].values() if v]
+    ess_med = statistics.mean(ess) if ess else 0.0
+    from app.analytics.bolsos import bucket_values
+    in_bucket = bucket_values(s, pos)["reserve"]  # bolso da reserva, quando você separou o dinheiro
+    liquido = in_bucket if in_bucket is not None else reserva_liquida(s, pos)
+    meses = liquido / ess_med if ess_med > 0 else None
+    steps = [x for x in RESERVE_STEPS if x[1] < minimo_meses] + [("Meta do plano", float(minimo_meses))]
+    degraus = [{"nome": nome, "meses": m, "valor": round(m * ess_med, 2), "atingido": liquido >= m * ess_med,
+                "falta": round(max(0.0, m * ess_med - liquido), 2)} for nome, m in steps]
+    atual = next((g for g in degraus if not g["atingido"]), None)
+    return {"liquido_d0_d1": round(liquido, 2), "custo_essencial_mensal": round(ess_med, 2), "meses": meses,
+            "minimo_meses": minimo_meses, "ok": meses is None or meses >= minimo_meses, "degraus": degraus,
+            "proximo_degrau": atual, "abaixo_do_colchao": bool(ess_med > 0 and degraus and not degraus[0]["atingido"]),
+            "fonte": "bolso" if in_bucket is not None else "liquidez"}
+
+
+def aporte_direcionado(classes: list[dict], total: float, aporte: float, reserva: dict) -> list[dict]:
+    """Para onde vai o aporte do mês, sem vender nada (rebalancear pelo fluxo evita IR e custos):
+    1º a reserva (todo o aporte até 3 meses de essenciais, metade dele daí até a meta do plano); depois cobre o que falta às classes abaixo do alvo, considerando o
+    total depois do aporte; sobra vai na proporção dos alvos. Só classes, nunca produtos."""
+    out: list[dict] = []
+    left = max(0.0, aporte)
+    nxt = reserva.get("proximo_degrau")
+    if left > 0 and nxt and nxt["falta"] > 0:
+        # até 3 meses a reserva leva tudo (é onde está o ganho de segurança); dali até a meta, metade do aporte
+        share = 1.0 if nxt["meses"] <= 3 else 0.5
+        v = min(left * share, nxt["falta"])
+        out.append({"destino": "Reserva de emergência (liquidez diária)", "valor": round(v, 2),
+                    "motivo": f"completar o degrau \"{nxt['nome']}\" "
+                              f"({nxt['meses']:g} {'mês' if nxt['meses'] == 1 else 'meses'} de essenciais)"})
+        left -= v
+    alvos = [c for c in classes if c["alvo"]]
+    if left <= 0.005 or not alvos:
+        return out
+    final_total = total + left
+    gaps = {c["classe"]: max(0.0, c["alvo"] * final_total - c["valor"]) for c in alvos}
+    gap_sum = sum(gaps.values())
+    if gap_sum >= left:
+        alloc = {k: left * g / gap_sum for k, g in gaps.items()}
+    else:
+        tgt_sum = sum(c["alvo"] for c in alvos)
+        alloc = {c["classe"]: gaps[c["classe"]] + (left - gap_sum) * c["alvo"] / tgt_sum for c in alvos}
+    for c in sorted(alvos, key=lambda c: -alloc[c["classe"]]):
+        v = alloc[c["classe"]]
+        if v >= 1:
+            out.append({"destino": c["classe"], "valor": round(v, 2),
+                        "motivo": "abaixo do alvo" if gaps[c["classe"]] > 0 else "manter a proporção dos alvos"})
+    return out
+
+
+REGRESSIVE = [(180, 0.225), (360, 0.20), (720, 0.175)]  # IR de renda fixa por prazo; acima de 720 dias, 15%
+TAX_FREE_SUBTYPES = {"LCI", "LCA", "CRI", "CRA", "DEBENTURE_INCENTIVADA", "POUPANCA"}
+
+
+def calendario_fiscal(positions: list[dict], today=None, window: int = 30) -> dict:
+    """Títulos de renda fixa a até `window` dias de cair de faixa do IR regressivo (resgatar antes custa mais)
+    e o próximo come-cotas (último dia útil de maio e de novembro) quando há fundos."""
+    today = today or today_brt()
+    faixas = []
+    for p in positions:
+        if (p.get("type") or "").upper() != "FIXED_INCOME" or (p.get("subtype") or "").upper() in TAX_FREE_SUBTYPES:
+            continue
+        start = p.get("purchase_date")
+        if not start:
+            continue
+        held = (today - start).days
+        for limit, rate in REGRESSIVE:
+            if held <= limit:
+                days_left = limit - held + 1
+                nxt = next((r for lim, r in REGRESSIVE if lim > limit), 0.15)
+                if days_left <= window:
+                    faixas.append({"titulo": p["name"], "instituicao": p.get("institution"), "saldo": p["balance"],
+                                   "dias": days_left, "data": today + timedelta(days=days_left),
+                                   "de": rate, "para": nxt})
+                break
+    come_cotas = None
+    if any((p.get("type") or "").upper() == "MUTUAL_FUND" for p in positions):
+        for y, m in ((today.year, 5), (today.year, 11), (today.year + 1, 5)):
+            d = _last_business_day(y, m)
+            if d >= today:
+                come_cotas = d
+                break
+    return {"faixas": sorted(faixas, key=lambda x: x["dias"]), "come_cotas": come_cotas}
+
+
+def _last_business_day(y: int, m: int):
+    d = month_bounds(f"{y:04d}-{m:02d}")[1]
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
+
+
+def policy_report(s: Session, aporte: float | None = None) -> dict:
     from app.accounting.balance import current_position
-    from app.accounting.management import LIQUID
     from app.portfolio.service import allocation, fgc_exposure
 
     p = plan(s)
@@ -119,30 +294,27 @@ def policy_report(s: Session) -> dict:
         t = targets.get(cls)
         cur = current.get(cls, 0.0)
         tgt = t.target_pct if t else None
-        lo = (t.min_pct if t and t.min_pct is not None else (tgt - 0.05 if tgt is not None else None))
-        hi = (t.max_pct if t and t.max_pct is not None else (tgt + 0.05 if tgt is not None else None))
+        band = min(BAND_ABS, BAND_REL * tgt) if tgt is not None else None
+        lo = (t.min_pct if t and t.min_pct is not None else (max(0.0, tgt - band) if tgt is not None else None))
+        hi = (t.max_pct if t and t.max_pct is not None else (tgt + band if tgt is not None else None))
         status = "sem alvo" if tgt is None else ("abaixo" if cur < lo - 1e-9 else "acima" if cur > hi + 1e-9 else "ok")
         linhas.append({"classe": cls, "atual": cur, "valor": round(cur * total, 2), "alvo": tgt, "min": lo, "max": hi,
                        "status": status,
                        "ajuste_para_alvo": round((tgt - cur) * total, 2) if tgt is not None else None})
     soma_alvos = sum(t.target_pct for t in targets.values())
 
-    # reserva de emergência em meses de custo essencial
-    hist = month_list(month_add(month_key(today_brt()), -1), 6)
-    d = dre(s, hist, with_valuation=False)
-    ess = [-v for v in next(r for r in d["rows"] if r["key"] == "essenciais")["values"].values()]
-    ess_med = statistics.mean(ess) if ess else 0.0
-    liquido = pos["totals"]["cash"] + sum(x["balance"] for x in positions if x.get("liquidity") in LIQUID)
-    meses = liquido / ess_med if ess_med > 0 else None
+    reserva = reserve_status(s, pos, p["reserva_meses_minima"])
     fgc = fgc_exposure(positions) if positions else []
     acima_fgc = [f for f in fgc if f["value"] > p["limite_fgc"]]
+    aporte = p["meta_aporte_mensal"] if aporte is None else aporte
     return {
         "classes": linhas, "soma_alvos": soma_alvos, "alvos_definidos": bool(targets),
-        "reserva": {"liquido_d0_d1": round(liquido, 2), "custo_essencial_mensal": round(ess_med, 2),
-                    "meses": meses, "minimo_meses": p["reserva_meses_minima"],
-                    "ok": meses is None or meses >= p["reserva_meses_minima"]},
+        "reserva": reserva,
+        "aporte": {"valor": aporte, "destinos": aporte_direcionado(linhas, total, aporte, reserva) if aporte else []},
+        "calendario_fiscal": calendario_fiscal(positions),
         "fgc": {"limite": p["limite_fgc"], "acima_do_limite": acima_fgc},
-        "nota": "Alvos e limites são definidos por você; o app só mede o desvio. Banda padrão: alvo ± 5 p.p.",
+        "nota": "Alvos e limites são definidos por você; o app só mede o desvio. Banda padrão: 5 p.p. ou 25% do "
+                "alvo, o que for menor (regra 5/25).",
     }
 
 
@@ -175,11 +347,14 @@ def policy_reviews(s: Session) -> list[ReviewCandidate]:
                 f"{c['classe']} {c['status']} da banda: {c['atual']:.1%} (alvo {c['alvo']:.0%})",
                 f"Para voltar ao alvo: {fmt_brl(c['ajuste_para_alvo'])}. Banda {c['min']:.0%}–{c['max']:.0%}."))
     r = rep["reserva"]
-    if not r["ok"]:
+    if not r["ok"] and r["proximo_degrau"]:
+        g = r["proximo_degrau"]
         out.append(ReviewCandidate(
             "policy:reserva", "policy_reserve", "warn", "plan", "reserva",
-            f"Reserva de emergência abaixo do mínimo: {r['meses']:.1f} meses (mínimo {r['minimo_meses']})",
-            f"Liquidez D0/D1 {fmt_brl(r['liquido_d0_d1'])} para custo essencial de {fmt_brl(r['custo_essencial_mensal'])}/mês."))
+            f"Reserva de emergência: faltam {fmt_brl(g['falta'])} para o degrau \"{g['nome']}\" "
+            f"({r['meses']:.1f} de {r['minimo_meses']:g} meses)".replace(".", ","),
+            f"Liquidez imediata {fmt_brl(r['liquido_d0_d1'])} para custo essencial de "
+            f"{fmt_brl(r['custo_essencial_mensal'])}/mês. O aporte do mês vai primeiro para a reserva."))
     return out  # excesso de FGC já é sinalizado por portfolio_reviews
 
 

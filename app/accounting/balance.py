@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, timedelta
 
 import pandas as pd
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.accounting.effective import excluded_pending_ids
-from app.models import (Account, AccountSetting, DailyNetWorth, FinancialEvent, Institution, Item, Loan,
+from app.models import (Account, AccountSetting, DailyNetWorth, FinancialEvent, Loan,
                         ManualAsset, Transaction)
 from app.utils.time import month_bounds, month_key, today_brt
 
@@ -27,10 +26,26 @@ def future_installments(s: Session) -> dict:
         cur = latest.get(r.installment_key)
         if cur is None or (r.installment_number or 0) > (cur.installment_number or 0):
             latest[r.installment_key] = r
+    # a 1ª parcela costuma ter centavos de arredondamento diferentes e cai noutra chave: chaves da mesma compra
+    # (cartão|comerciante|nº de parcelas) com valores a até R$ 1/2% são o mesmo plano, vale a parcela mais recente
+    same_purchase: dict[str, list] = defaultdict(list)
+    for k, r in latest.items():
+        same_purchase[k.rsplit("|", 1)[0]].append(r)
+    plans_latest = []
+    for rs in same_purchase.values():
+        rs.sort(key=lambda r: abs(r.amount))
+        cluster = [rs[0]]
+        for r in rs[1:]:
+            if abs(abs(r.amount) - abs(cluster[-1].amount)) <= max(1.0, 0.02 * abs(r.amount)):
+                cluster.append(r)
+            else:
+                plans_latest.append(max(cluster, key=lambda x: x.installment_number or 0))
+                cluster = [r]
+        plans_latest.append(max(cluster, key=lambda x: x.installment_number or 0))
     today_m = month_key(today_brt())
     by_month: dict[str, float] = defaultdict(float)
     plans = []
-    for r in latest.values():
+    for r in plans_latest:
         remaining = (r.total_installments or 0) - (r.installment_number or 0)
         if remaining <= 0:
             continue
@@ -85,8 +100,8 @@ def card_usage(a: Account) -> tuple[float | None, float | None]:
 def current_position(s: Session) -> dict:
     from app.portfolio.service import positions
 
-    insts = {i.id: i.name for i in s.scalars(select(Institution))}
-    items = {i.id: (i.nickname or insts.get(i.institution_id, "")) for i in s.scalars(select(Item))}
+    from app.accounting.institutions import institution_labels
+    items = institution_labels(s)
     settings = {x.account_id: x for x in s.scalars(select(AccountSetting))}
     assumptions: list[str] = []
     cash, cards = [], []
@@ -134,13 +149,17 @@ def current_position(s: Session) -> dict:
         assumptions.append(f"Baixa/perda explícita de investimentos: R$ {transit['writeoffs']:,.2f}.")
     loans = [{"id": l.id, "name": l.product_name or l.type, "outstanding": l.outstanding or 0.0}
              for l in s.scalars(select(Loan).where(Loan.removed_at.is_(None)))]
+    from app.accounting.manual import points_by_asset, value_at
     manual = list(s.scalars(select(ManualAsset).where(ManualAsset.active.is_(True))))
-    m_assets = [{"id": m.id, "name": m.name, "class": m.asset_class, "value": m.value, "as_of": m.as_of}
-                for m in manual if m.kind == "asset"]
-    m_liab = [{"id": m.id, "name": m.name, "class": m.asset_class, "value": m.value, "as_of": m.as_of}
-              for m in manual if m.kind == "liability"]
+    pts = points_by_asset(s)
+    today = today_brt()
+    m_rows = [{"id": m.id, "name": m.name, "class": m.asset_class, "value": round(value_at(m, pts.get(m.id), today), 2),
+               "as_of": m.as_of, "growth_aa": m.growth_aa, "kind": m.kind} for m in manual]
+    m_assets = [r for r in m_rows if r["kind"] == "asset"]
+    m_liab = [r for r in m_rows if r["kind"] == "liability"]
     if manual:
-        assumptions.append("Itens manuais valem pelo último valor informado (data em 'as_of').")
+        assumptions.append("Itens manuais valem pelo último valor informado, atualizado pela taxa anual quando "
+                           "definida (índice do imóvel, depreciação do veículo).")
     totals = {
         "cash": sum(c["balance"] for c in cash), "investments": sum(by_class.values()),
         "manual_assets": sum(m["value"] for m in m_assets), "in_transit": transit["in_transit"],
@@ -150,8 +169,13 @@ def current_position(s: Session) -> dict:
     totals["assets"] = totals["cash"] + totals["investments"] + totals["in_transit"] + totals["manual_assets"]
     totals["liabilities"] = totals["card_current"] + totals["card_future"] + totals["loans"] + totals["manual_liabilities"]
     totals["net_worth"] = totals["assets"] - totals["liabilities"]
-    totals["liquid_net_worth"] = totals["cash"] + sum(v for k, v in by_class.items()
-                                                      if k not in ("Previdência", "COE")) - totals["card_current"]
+    # patrimônio financeiro: caixa + investimentos (sem previdência/COE) − fatura atual. NÃO é liquidez: inclui CDB
+    # com resgate só no vencimento, fundos D+30, ações D+2 e Tesouro marcado a mercado
+    totals["financial_net_worth"] = totals["cash"] + sum(v for k, v in by_class.items()
+                                                         if k not in ("Previdência", "COE")) - totals["card_current"]
+    # disponível em até 1 dia: caixa + liquidez diária sem marcação a mercado (a mesma conta da reserva)
+    from app.accounting.management import reserva_liquida
+    totals["liquid_net_worth"] = reserva_liquida(s, {"totals": totals, "positions": pos})
     return {"as_of": today_brt(), "totals": totals, "cash": cash, "investments_by_class": dict(by_class),
             "positions": pos, "cards": cards, "installments": inst, "loans": loans, "manual_assets": m_assets,
             "manual_liabilities": m_liab, "in_transit": transit["lines"], "assumptions": assumptions}
@@ -179,14 +203,18 @@ def snapshot_net_worth(s: Session) -> dict:
 def history(s: Session, months: int = 12) -> list[dict]:
     """Balanço em cada fim de mês. Usa snapshot quando existe; senão reconstrói (marcado como inferido):
     contas e cartões: saldo(d) = saldo_atual − Σ fluxos após d; investimentos: reconstrução por proxy."""
+    from app.accounting.manual import manual_net_at
     from app.portfolio.service import reconstruct_history
 
     today = today_brt()
     snaps = {r.date: r for r in s.scalars(select(DailyNetWorth))}
     cur = current_position(s)["totals"]
+    # mesmo perímetro do saldo atual: sem contas removidas nem excluídas do patrimônio
+    outside = list(s.scalars(select(AccountSetting.account_id).where(AccountSetting.include_in_net_worth.is_(False))))
     flows = s.execute(select(Transaction.date, Account.type, func.sum(Transaction.flow))
                       .join(Account, Account.id == Transaction.account_id)
-                      .where(Transaction.removed_at.is_(None),
+                      .where(Transaction.removed_at.is_(None), Account.removed_at.is_(None),
+                             Account.id.not_in(outside or ["-"]),
                              Transaction.id.not_in(excluded_pending_ids(s)))
                       .group_by(Transaction.date, Account.type)).all()
     fdf = pd.DataFrame(flows, columns=["date", "type", "flow"]) if flows else pd.DataFrame(columns=["date", "type", "flow"])
@@ -218,8 +246,8 @@ def history(s: Session, months: int = 12) -> list[dict]:
         cards = max(0.0, cur["card_current"] + card_after)  # saldo do cartão (negativo = dívida) recuado
         inv = float(inv_hist.get(d, inv_hist.iloc[0] if len(inv_hist) else cur["investments"])) \
             if len(inv_hist) else cur["investments"]
-        nw = cash + inv + cur["manual_assets"] - cards - cur["loans"] - cur["manual_liabilities"]
+        manual = manual_net_at(s, d)  # valor vigente na data (zero antes de o item existir), não o de hoje
+        nw = cash + inv + manual - cards - cur["loans"]
         out.append({"date": d.isoformat(), "cash": cash, "investments": inv, "cards": cards, "card_future": None,
-                    "loans": cur["loans"], "manual": cur["manual_assets"] - cur["manual_liabilities"],
-                    "net_worth": nw, "inferred": True, "month": ym})
+                    "loans": cur["loans"], "manual": manual, "net_worth": nw, "inferred": True, "month": ym})
     return out

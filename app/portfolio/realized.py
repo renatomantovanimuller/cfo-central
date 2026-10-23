@@ -191,7 +191,9 @@ def equity_lots(s: Session) -> dict:
                     known_cost -= pm * q
         qty = inv.quantity or 0.0
         unknown_q = max(0.0, (base_qty or 0) - explained_before_base) if snaps else max(0.0, qty - known_q)
-        known_q = min(known_q, qty)
+        if known_q > qty:  # venda não detectada: corta quantidade e custo na mesma proporção (preço médio intacto)
+            known_cost = known_cost * qty / known_q if known_q > 0 else 0.0
+            known_q = qty
         pm = known_cost / known_q if known_q > 0 else None
         report.append({
             "ativo": inv.code or inv.name, "quantidade": qty, "preco_atual": inv.value, "saldo": inv.balance,

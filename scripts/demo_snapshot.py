@@ -48,8 +48,12 @@ def main(out: str) -> None:
 
         for p in ("/api/sync/status", "/api/onboarding", "/api/integrations", "/api/reviews", "/api/categories/flat",
                   "/api/balance", "/api/cards", "/api/portfolio", "/api/portfolio/realized", "/api/planning",
-                  "/api/rules", "/api/data-health", "/api/assets", "/api/manual-assets", "/api/alerts/status"):
+                  "/api/rules", "/api/data-health", "/api/assets", "/api/manual-assets", "/api/alerts/status",
+                  "/api/financial-health", "/api/merchants/enrichment", "/api/patrimony", "/api/buckets", "/api/today"):
             get(p)
+        get("/api/patrimony/bridge", months=12)
+        get("/api/patrimony/evolution", months=12)
+        get("/api/patrimony/projection", years=10)
         conns = get("/api/connections")
         for run in conns["runs"]:
             get(f"/api/runs/{run['id']}/events")

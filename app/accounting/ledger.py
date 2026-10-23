@@ -14,14 +14,16 @@ from sqlalchemy.orm import Session
 from app.accounting.effective import SUPERSEDED, ineffective_pending
 from app.alerts.reviews import ReviewCandidate, fmt_brl
 from app.categorization.chart import MCC_MAP, seed_chart
+from app.categorization.cnae import cnae_category, norm_cnae
 from app.categorization.engine import (Decision, TxView, compile_rules, keyword_category, match_rule,
                                        merchant_key)
 from app.categorization.text import counterparty_from_description, merchant_alias, norm
 from app.config.settings import get_settings
-from app.models import (Account, CardPaymentLink, Category, CategoryRule, CreditCardBill, EventOverride,
-                        EventType, FinancialEvent, IdentityRecord, InternalTransfer, LedgerAudit, Merchant,
-                        MerchantAlias, PluggyCategoryMap, Transaction)
-from app.reconciliation.matching import card_payments, installment_key, investment_flows, transfers
+from app.models import (Account, AccountSetting, CardPaymentLink, Category, CategoryRule, CreditCardBill,
+                        EventOverride, EventType, FinancialEvent, IdentityRecord, InternalTransfer, Item, LedgerAudit,
+                        Merchant, MerchantAlias, PluggyCategoryMap, Transaction)
+from app.reconciliation.matching import (card_payments, connected_card_issuers, installment_key, investment_flows,
+                                         transfers)
 from app.utils.time import today_brt, utcnow
 
 log = logging.getLogger(__name__)
@@ -84,7 +86,7 @@ def load_tx_views(s: Session) -> list[TxView]:
             counterparty_name=t.counterparty_name or counterparty_from_description(t.description),
             counterparty_doc=t.counterparty_doc, payer_doc=t.payer_doc, receiver_doc=t.receiver_doc,
             status=t.status, installment_number=t.installment_number, total_installments=t.total_installments,
-            removed=t.removed_at is not None))
+            removed=t.removed_at is not None, merchant_cnae=norm_cnae(t.merchant_cnae)))
     return out
 
 
@@ -120,6 +122,8 @@ class MerchantResolver:
                              cnpj=value)
                 self.s.add(m)
                 self.by_doc[value] = m
+            if tx.merchant_cnae and not m.cnae:  # o CNAE informado pela Pluggy fica no cadastro do comerciante
+                m.cnae, m.cnae_source = tx.merchant_cnae, "pluggy"
             return m
         m = self.by_alias.get(value)
         if m is None:
@@ -143,8 +147,12 @@ def rebuild_ledger(s: Session, actor: str = "system", reason: str = "rebuild") -
     txs = load_tx_views(s)
     bills = [{"id": b.id, "account_id": b.account_id, "due_date": b.due_date, "total_amount": b.total_amount}
              for b in s.scalars(select(CreditCardBill))]
-    card_accounts = {a.id: a.item_id for a in s.scalars(select(Account).where(Account.type == "CREDIT",
-                                                                                 Account.removed_at.is_(None)))}
+    card_rows = list(s.scalars(select(Account).where(Account.type == "CREDIT", Account.removed_at.is_(None))))
+    card_accounts = {a.id: a.item_id for a in card_rows}
+    nick = {x.account_id: x.nickname for x in s.scalars(select(AccountSetting)) if x.nickname}
+    item_nick = {i.id: i.nickname for i in s.scalars(select(Item)) if i.nickname}
+    card_issuers = connected_card_issuers([" ".join(filter(None, (a.name, a.marketing_name, nick.get(a.id),
+                                                                  item_nick.get(a.item_id)))) for a in card_rows])
     bill_due = {b["id"]: b["due_date"] for b in bills}
     tx_bill = dict(s.execute(select(Transaction.id, Transaction.bill_id).where(Transaction.bill_id.is_not(None))).all())
 
@@ -158,7 +166,7 @@ def rebuild_ledger(s: Session, actor: str = "system", reason: str = "rebuild") -
                       review=["pending_stale"] if why != SUPERSEDED else [])
         for tid, why in dropped.items()}
     structural.update(investment_flows(txs_live))
-    cp, card_links = card_payments(txs_live, bills, card_accounts, skip=set(structural))
+    cp, card_links = card_payments(txs_live, bills, card_accounts, skip=set(structural), connected_issuers=card_issuers)
     structural.update(cp)
     tr, transfer_links = transfers(txs_live, own_docs, own_names, skip=set(structural))
     structural.update(tr)
@@ -273,6 +281,7 @@ def rebuild_ledger(s: Session, actor: str = "system", reason: str = "rebuild") -
             detail=f"De {min(g[0].date for g in group):%d/%m/%Y} a {tx0.date:%d/%m/%Y}. Sugestão atual: {cat0.name} "
                    f"({d0.confidence:.0%} de confiança).",
             data={"count": len(group), "total": total, "category_id": cat0.id, "merchant_id": mid,
+                  "confidence": round(sum(g[2].confidence for g in group) / len(group), 3),
                   "tx_ids": [g[0].id for g in group][:200]}))
     s.flush()
     return {"events": len(decided), "transfers": len(transfer_links), "card_links": len(card_links),
@@ -288,7 +297,7 @@ def _decide(tx: TxView, o: EventOverride | None, rules, structural: dict[str, De
     if paired and paired.event_type == EventType.INTERNAL_TRANSFER:
         # as duas pontas estão em contas conectadas: dinheiro só mudou de bolso. Um ajuste/regra que dizia
         # "receita" (feito quando a origem não estava conectada) contaria a receita duas vezes; vale a conciliação.
-        r = None if o and (o.category_id or o.event_type) else match_rule(tx, rules)
+        r = None if o and (o.category_id or o.event_type) else match_rule(tx, rules, m.id if m else None)
         forced = (o and (o.category_id or o.event_type) and (o.event_type or "") != EventType.INTERNAL_TRANSFER) \
             or (r is not None and r.event_type != EventType.INTERNAL_TRANSFER)
         if forced:
@@ -297,7 +306,7 @@ def _decide(tx: TxView, o: EventOverride | None, rules, structural: dict[str, De
         return paired
     if o and (o.category_id or o.event_type):
         return Decision(o.category_id, o.event_type, "manual", f"override:{o.id}", 1.0)
-    r = match_rule(tx, rules)
+    r = match_rule(tx, rules, m.id if m else None)
     if r:
         hits[r.id] += 1
         return Decision(r.category_id, r.event_type, "rule", f"rule:{r.id}", r.confidence)
@@ -327,11 +336,15 @@ def _decide(tx: TxView, o: EventOverride | None, rules, structural: dict[str, De
     if mapped and tx.account_type == "CREDIT" and cats.get(mapped[0]) is not None \
             and cats[mapped[0]].nature == "patrimonial" and mapped[0] != "pat.fatura":
         mapped = None
+    # ramo do estabelecimento pelo CNAE do CNPJ (Pluggy ou consulta pública): sinal de despesa, nunca de receita
+    cn = cnae_category(tx.merchant_cnae or (m.cnae if m else None))
     # estorno/crédito no cartão: nunca é receita; reduz a despesa da categoria de origem
     if tx.flow > 0 and (tx.account_type == "CREDIT" or ESTORNO_RE.search(tx.text)):
         kw = keyword_category(tx, direction="out")
         if kw:
             return Decision(kw[0], "REFUND", "heuristic", f"refund:{kw[0]}", kw[1])
+        if cn:
+            return Decision(cn[0], "REFUND", "heuristic", f"refund:cnae:{cn[2]}", cn[1])
         if mapped and cats.get(mapped[0]) is not None and cats[mapped[0]].nature == "despesa" \
                 and not mapped[0].startswith("terceiros"):
             return Decision(mapped[0], "REFUND", "pluggy_map", f"refund:pluggy:{tx.pluggy_cat}", mapped[1])
@@ -340,28 +353,40 @@ def _decide(tx: TxView, o: EventOverride | None, rules, structural: dict[str, De
         return Decision("compras.diversos", "REFUND", "default", "refund:generic", 0.4)
     kw = keyword_category(tx)
     mcc = MCC_MAP.get(tx.mcc) if tx.mcc and tx.flow < 0 and tx.account_type == "CREDIT" else None
+    # sinais mais específicos vencem empates: palavra-chave da marca > CNAE do estabelecimento > MCC do cartão
+    best = _best_signal([(kw, f"keyword:{kw[0]}" if kw else None),
+                         ((cn[0], cn[1]) if cn and tx.flow < 0 else None, f"cnae:{cn[2]}" if cn else None),
+                         (mcc, f"mcc:{tx.mcc}")])
     if mapped:
         cat_id, conf = mapped
         # Pix/TED recebido classificado como "transferência a terceiros" → recebimento a classificar
         if cat_id.startswith("terceiros") and tx.flow > 0:
             cat_id, conf = "rec.pix_terceiros", 0.4
+        # crédito em "Empréstimos e financiamentos" é dinheiro emprestado entrando, não juros negativos nem receita
+        elif tx.flow > 0 and tx.pluggy_cat == "02000000":
+            cat_id = "pat.emprestimo_in"
         elif cat_id == "terceiros.pf" and tx.party_doc and len(tx.party_doc) == 14:
             cat_id = "terceiros.pj"
-        # sinais mais específicos vencem empates: palavra-chave da marca > MCC do cartão > categoria da Pluggy
-        if kw and kw[1] >= conf and (not mcc or kw[1] >= mcc[1]):
-            return Decision(kw[0], None, "heuristic", f"keyword:{kw[0]}", kw[1])
-        if mcc and mcc[1] >= conf:
-            return Decision(mcc[0], None, "heuristic", f"mcc:{tx.mcc}", mcc[1])
+        # ...e todos eles vencem a categoria (genérica) da Pluggy no empate
+        if best and best[0][1] >= conf:
+            return Decision(best[0][0], None, "heuristic", best[1], best[0][1])
         return Decision(cat_id, None, "pluggy_map", f"pluggy:{tx.pluggy_cat}", conf)
-    if kw and (not mcc or kw[1] >= mcc[1]):
-        return Decision(kw[0], None, "heuristic", f"keyword:{kw[0]}", kw[1])
-    if mcc:
-        return Decision(mcc[0], None, "heuristic", f"mcc:{tx.mcc}", mcc[1])
+    if best:
+        return Decision(best[0][0], None, "heuristic", best[1], best[0][1])
     if card_transfer_noise:
         return Decision("compras.diversos", "EXPENSE", "default", "card_purchase:generic", 0.3)
     if tx.flow > 0 and tx.account_type == "BANK":
         return Decision("rec.pix_terceiros", None, "default", None, 0.2)
     return Decision("nc", None, "default", None, 0.1)
+
+
+def _best_signal(signals: list[tuple[tuple[str, float] | None, str | None]]):
+    """((categoria, confiança), rule_id) do sinal mais confiante; empate fica com o primeiro da lista."""
+    best = None
+    for sig, rid in signals:
+        if sig and (best is None or sig[1] > best[0][1]):
+            best = (sig, rid)
+    return best
 
 
 MIRROR_SOURCES = {"merchant", "pluggy_map", "heuristic", "default", "modelo"}

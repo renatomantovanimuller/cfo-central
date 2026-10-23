@@ -10,7 +10,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.accounting.balance import current_position, future_installments
-from app.accounting.statements import dre, month_list
+from app.accounting.statements import SPENDING_LINES, dre, month_list
+from app.categorization.cnae import cnae_category
 from app.models import (Account, Budget, Category, CreditCardBill, DailyNetWorth, EventType, FinancialEvent,
                         Merchant, RecurringRule, ReviewItem)
 from app.utils.time import month_add, month_bounds, month_key, today_brt
@@ -29,17 +30,41 @@ def _root_map(s: Session) -> tuple[dict, dict]:
     return cats, roots
 
 
+def month_budgets(s: Session, month: str) -> dict[str, float]:
+    """Orçamento definido por categoria para o mês: o do mês vence o padrão (sem mês)."""
+    out: dict[str, float] = {}
+    for b in s.scalars(select(Budget)):
+        if b.month in (None, month) and b.amount and (b.month == month or b.category_id not in out):
+            out[b.category_id] = float(b.amount)
+    return out
+
+
+def rollup_budgets(own: dict[str, float], cats: dict) -> dict[str, float]:
+    """Orçamento efetivo de cada categoria: o próprio, se definido; senão a soma das filhas. Assim mãe e filhas
+    orçadas ao mesmo tempo não contam em dobro (o teto da mãe já cobre as filhas)."""
+    children: dict[str, list[str]] = defaultdict(list)
+    for cid, c in cats.items():
+        if c.parent_id:
+            children[c.parent_id].append(cid)
+
+    def eff(cid: str) -> float:
+        if cid in own:
+            return own[cid]
+        return sum(eff(k) for k in children.get(cid, []))
+    return {cid: v for cid in cats if (v := eff(cid))}
+
+
 def kpis_from_dre(d: dict) -> dict:
     rows = {r["key"]: r for r in d["rows"]}
     out = {}
     for m in d["months"]:
         rec = rows["receita_liquida"]["values"][m]
         res = rows["resultado_liquido"]["values"][m]
-        expenses = sum(rows[k]["values"][m] for k in ("essenciais", "estilo_vida", "terceiros", "nao_classificado",
-                                                      "despesas_financeiras"))
+        expenses = sum(rows[k]["values"][m] for k in SPENDING_LINES)
         out[m] = {"receita_liquida": rec, "despesas": -expenses, "essenciais": -rows["essenciais"]["values"][m],
                   "estilo_vida": -rows["estilo_vida"]["values"][m], "resultado": res,
                   "extraordinarios": rows["extraordinarios"]["values"][m],
+                  "a_classificar_entradas": rows["entradas_a_classificar"]["values"][m],
                   "resultado_total": rows["resultado_total"]["values"][m],
                   "taxa_poupanca": d["savings_rate"][m]}
     return out
@@ -125,8 +150,9 @@ def daily_spend(s: Session, month: str) -> dict:
             acc += by_day.get(day, 0.0)
             cum.append(round(acc, 2))
         out[label] = cum
-    budget = s.scalar(select(func.sum(Budget.amount)).where(Budget.month.is_(None))) or 0.0
-    out["budget"] = budget
+    cats = {c.id: c for c in s.scalars(select(Category))}
+    eff = rollup_budgets(month_budgets(s, month), cats)
+    out["budget"] = sum(v for cid, v in eff.items() if not cats[cid].parent_id and cats[cid].nature != "receita")
     return out
 
 
@@ -145,11 +171,7 @@ def category_tree(s: Session, month: str) -> list[dict]:
         agg[cid][m] += amt
         if roots.get(cid) and roots[cid] != cid:
             agg[roots[cid]][m] += amt
-    budgets = {}
-    for bud in s.scalars(select(Budget)):
-        if bud.month in (None, month):
-            if bud.month == month or bud.category_id not in budgets:
-                budgets[bud.category_id] = bud.amount
+    budgets = month_budgets(s, month)
     out = []
     for c in sorted(cats.values(), key=lambda c: c.sort):
         if c.nature == "patrimonial" or not c.active:
@@ -175,6 +197,7 @@ def category_detail(s: Session, category_id: str, months: int = 12) -> dict:
     rows = s.execute(select(FinancialEvent.competence_date, FinancialEvent.amount, FinancialEvent.merchant_id,
                             FinancialEvent.category_id)
                      .where(FinancialEvent.is_removed.is_(False), FinancialEvent.category_id.in_(ids),
+                            FinancialEvent.event_type.in_(EventType.PNL),  # mesmo recorte da DRE
                             FinancialEvent.competence_date >= start)).all()
     by_month: dict[str, float] = defaultdict(float)
     by_merchant: dict[int, list[float]] = defaultdict(list)
@@ -205,8 +228,15 @@ def merchants_ranking(s: Session, months: int = 12) -> list[dict]:
                             FinancialEvent.competence_date >= start, FinancialEvent.event_type.in_(EventType.PNL))
                      .group_by(FinancialEvent.merchant_id)).all()
     ms = {m.id: m for m in s.scalars(select(Merchant))}
-    top_cat = dict(s.execute(select(FinancialEvent.merchant_id, func.max(FinancialEvent.category_id))
-                             .where(FinancialEvent.merchant_id.is_not(None)).group_by(FinancialEvent.merchant_id)).all())
+    # categoria mais frequente de cada comerciante (não a de maior id em ordem alfabética)
+    top_cat: dict[int, str] = {}
+    best: dict[int, int] = {}
+    for mid, cid, n in s.execute(select(FinancialEvent.merchant_id, FinancialEvent.category_id, func.count())
+                                 .where(FinancialEvent.merchant_id.is_not(None), FinancialEvent.is_removed.is_(False),
+                                        FinancialEvent.event_type.in_(EventType.PNL))
+                                 .group_by(FinancialEvent.merchant_id, FinancialEvent.category_id)):
+        if n > best.get(mid, 0):
+            top_cat[mid], best[mid] = cid, n
     out = []
     for mid, n, total, first, last in rows:
         m = ms.get(mid)
@@ -216,7 +246,9 @@ def merchants_ranking(s: Session, months: int = 12) -> list[dict]:
         out.append({"id": mid, "name": m.canonical_name, "doc": m.cnpj, "count": n, "total": round(total, 2),
                     "avg_ticket": round(total / n, 2), "first": first, "last": last,
                     "category_id": cid, "category": cats[cid].name if cid in cats else None,
-                    "category_origin": m.category_origin})
+                    "category_origin": m.category_origin, "cnae": m.cnae, "cnae_desc": m.cnae_desc,
+                    "cnae_source": m.cnae_source,
+                    "cnae_ramo": cats[cn[0]].name if (cn := cnae_category(m.cnae)) and cn[0] in cats else None})
     return sorted(out, key=lambda x: x["total"])
 
 
@@ -274,13 +306,13 @@ def liquidity_forecast(s: Session, horizon: int = 6) -> dict:
     cur_m = month_key(today)
     hist = month_list(month_add(cur_m, -1), FORECAST_MONTHS)
     start, _ = month_bounds(hist[0])
-    _, end = month_bounds(hist[-1])
     rows = s.execute(select(FinancialEvent.competence_date, FinancialEvent.amount, FinancialEvent.event_type,
                             Account.type, FinancialEvent.installment_key, FinancialEvent.category_id,
                             Category.dre_line)
                      .join(Account, Account.id == FinancialEvent.account_id)
                      .outerjoin(Category, Category.id == FinancialEvent.category_id)
-                     .where(FinancialEvent.is_removed.is_(False), FinancialEvent.competence_date.between(start, end))).all()
+                     .where(FinancialEvent.is_removed.is_(False),
+                            FinancialEvent.competence_date.between(start, today))).all()
     df = pd.DataFrame(rows, columns=["d", "amount", "et", "acc", "inst", "cat", "line"])
     if not df.empty:
         df["m"] = df["d"].map(lambda d: f"{d.year:04d}-{d.month:02d}")
@@ -290,7 +322,8 @@ def liquidity_forecast(s: Session, horizon: int = 6) -> dict:
     n = len(hist)
 
     income_mask = ((df["acc"] == "BANK") & df["et"].isin(["INCOME", "INVESTMENT_INCOME"]) & (df["amount"] > 0)
-                   & ~df["cat"].isin(EXTRAORDINARY_CATEGORIES) & (df["line"] != "extraordinarios")) if not df.empty else None
+                   & ~df["cat"].isin(EXTRAORDINARY_CATEGORIES)
+                   & ~df["line"].isin(["extraordinarios", "entradas_a_classificar"])) if not df.empty else None
     salary_months = _monthly_totals(df, income_mask & (df["cat"] == SALARY_CATEGORY), hist) if not df.empty else []
     other_months = _monthly_totals(df, income_mask & (df["cat"] != SALARY_CATEGORY), hist) if not df.empty else []
     last_salary = next((v for v in reversed(salary_months) if v > 0), 0.0)
@@ -299,8 +332,12 @@ def liquidity_forecast(s: Session, horizon: int = 6) -> dict:
         income = last_salary + _median(other_months)
     else:
         income = _median(_monthly_totals(df, income_mask, hist)) if not df.empty else 0.0
-    bank_exp = -_median(_monthly_totals(
-        df, (df["acc"] == "BANK") & df["et"].isin(["EXPENSE", "FINANCIAL_EXPENSE", "TAX", "REFUND"]), hist)) if not df.empty else 0.0
+    bank_mask = ((df["acc"] == "BANK") & df["et"].isin(["EXPENSE", "FINANCIAL_EXPENSE", "TAX", "REFUND"])) \
+        if not df.empty else None
+    bank_exp = -_median(_monthly_totals(df, bank_mask, hist)) if not df.empty else 0.0
+    # mês corrente: o que já entrou/saiu está no saldo de hoje; projeta só o que falta do esperado
+    received_now = _monthly_totals(df, income_mask, [cur_m])[0] if not df.empty else 0.0
+    spent_now = -_monthly_totals(df, bank_mask, [cur_m])[0] if not df.empty else 0.0
     card_new = -_median(_monthly_totals(
         df, (df["acc"] == "CREDIT") & df["et"].isin(list(EXPENSE_LIKE)) & df["inst"].isna(), hist)) if not df.empty else 0.0
     pos = current_position(s)
@@ -308,20 +345,26 @@ def liquidity_forecast(s: Session, horizon: int = 6) -> dict:
     inst = {x["month"]: x["amount"] for x in pos["installments"]["by_month"]}
     current_bill = pos["totals"]["card_current"]
     recurring_out = s.scalar(select(func.sum(RecurringRule.expected_amount)).where(
-        RecurringRule.direction == "out", RecurringRule.status != "ignored")) or 0.0
+        RecurringRule.direction == "out", RecurringRule.status != "ignored", RecurringRule.frequency_days < 300)) or 0.0
+    # despesas anuais (IPVA, IPTU, seguro…) não aparecem na mediana mensal: entram no mês do vencimento previsto
+    annual_by_month: dict[str, float] = defaultdict(float)
+    for r in s.scalars(select(RecurringRule).where(RecurringRule.direction == "out", RecurringRule.status != "ignored",
+                                                   RecurringRule.frequency_days >= 300,
+                                                   RecurringRule.next_date >= today)):
+        annual_by_month[month_key(r.next_date)] += r.expected_amount
     out = []
     bal = cash
     for k in range(horizon):
         m = month_add(cur_m, k)
         card_bill = current_bill if k == 0 else inst.get(m, 0.0) + card_new
-        if k == 0:  # mês corrente: só o que falta (aproximação proporcional)
-            frac = 1 - (today.day - 1) / 30
-            inflow, outflow = income * frac, bank_exp * frac + card_bill
+        annual = annual_by_month.get(m, 0.0)
+        if k == 0:  # mês corrente: só o que falta (esperado − já realizado)
+            inflow, outflow = max(0.0, income - received_now), max(0.0, bank_exp - spent_now) + card_bill
         else:
             inflow, outflow = income, bank_exp + card_bill
-        bal = bal + inflow - outflow
+        bal = bal + inflow - outflow - annual
         out.append({"month": m, "income": round(inflow, 2), "bank_expenses": round(outflow - card_bill, 2),
-                    "card_bill": round(card_bill, 2), "end_cash": round(bal, 2)})
+                    "card_bill": round(card_bill, 2), "annual": round(annual, 2), "end_cash": round(bal, 2)})
     return {"start_cash": cash, "months": out, "min_cash": min(x["end_cash"] for x in out) if out else cash,
             "assumptions_basis": {"income_basis": income_basis, "expense_basis": "mediana_meses_completos",
                                   "months": n, "window": hist, "income_monthly": round(income, 2),
@@ -331,6 +374,8 @@ def liquidity_forecast(s: Session, horizon: int = 6) -> dict:
                 f"Despesas em conta: mediana de {n} meses completos ({bank_exp:,.0f}/mês).",
                 f"Cartão: fatura atual no 1º mês; depois parcelas já contratadas + gasto médio à vista ({card_new:,.0f}/mês).",
                 f"Recorrências de saída detectadas somam {recurring_out:,.0f}/mês (já embutidas nas médias).",
+                "Despesas anuais detectadas (IPVA, IPTU, seguro, anuidade…) entram no mês do vencimento previsto.",
+                "Mês corrente: projeta só o que falta (esperado − já recebido/gasto no mês, que está no saldo).",
                 "Não considera aportes/resgates de investimento.",
             ]}
 

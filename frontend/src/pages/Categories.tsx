@@ -13,7 +13,8 @@ import { brl, monthLabel, monthLong, pct } from "../format";
 
 const LINES: Record<string, string> = { receita_operacional: "Receita operacional", outras_receitas: "Outras receitas",
   essenciais: "Essenciais", estilo_vida: "Estilo de vida", terceiros: "Terceiros", receitas_financeiras: "Receitas financeiras",
-  despesas_financeiras: "Despesas financeiras", impostos_renda: "Impostos", nao_classificado: "A classificar" };
+  despesas_financeiras: "Despesas financeiras", impostos_renda: "Impostos", nao_classificado: "A classificar", extraordinarios: "Extraordinários",
+  entradas_a_classificar: "Entradas a classificar" };
 
 function Spark({ values }: { values: number[] }) {
   const max = Math.max(...values.map(Math.abs), 1);

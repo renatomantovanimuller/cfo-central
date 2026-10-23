@@ -43,6 +43,8 @@ def features(tx: TxView) -> str:
              f"_valor_{int(math.log2(abs(tx.flow) + 1))}"]
     if tx.mcc:
         extra.append(f"_mcc_{tx.mcc}")
+    if tx.merchant_cnae:  # classe CNAE (4 dígitos): comerciantes do mesmo ramo compartilham o sinal
+        extra.append(f"_cnae_{tx.merchant_cnae[:4]}")
     if tx.pluggy_cat:
         extra += [f"_pcat_{tx.pluggy_cat}", f"_pgrp_{tx.pluggy_cat[:4]}"]
     if tx.payment_method:

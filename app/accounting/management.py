@@ -3,30 +3,34 @@ Resultado recorrente exclui itens extraordinários (herança, doações); eles a
 from __future__ import annotations
 
 import statistics
-from collections import defaultdict
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.accounting.balance import current_position, future_installments
-from app.accounting.statements import dre, month_list
-from app.models import Budget, Category, InvestmentTransaction
+from app.accounting.statements import SPENDING_LINES, dre, month_list
+from app.models import Category, InvestmentTransaction
 from app.portfolio.classification import has_daily_liquidity
 from app.utils.time import month_key, today_brt
 
+# linhas de saída: sinal invertido para comparar com orçamento (inclui impostos, que têm orçamento próprio)
 EXPENSE_LINES = {"essenciais", "estilo_vida", "terceiros", "nao_classificado", "impostos_renda", "despesas_financeiras"}
 LIQUID = {"D0", "D1"}
+# resgatáveis em D1, mas com marcação a mercado: vender antes do vencimento pode dar prejuízo, não é reserva
+MARKED_TO_MARKET = {"Tesouro IPCA+", "Tesouro Prefixado"}
 
 
 def reserva_liquida(s: Session, pos: dict) -> float:
-    """Caixa + investimentos de liquidez D0/D1 (inclui Tesouro Selic) + RF com liquidez diaria comprovada
-    (emissor Nu/RDB/caixinha ou historico de resgate parcial antes do vencimento)."""
+    """Caixa + investimentos de liquidez D0/D1 (inclui Tesouro Selic; exclui Tesouro IPCA+/Prefixado, marcados a
+    mercado) + RF com liquidez diaria comprovada (emissor Nu/RDB/caixinha ou historico de resgate parcial antes do
+    vencimento). Fonte única da reserva: DRE gerencial e política de investimentos usam esta conta."""
     redeemed = {i for i in s.scalars(select(InvestmentTransaction.investment_id).where(
         InvestmentTransaction.type == "SELL").distinct())}
     total = pos["totals"]["cash"]
     for p in pos.get("positions", []):
         liq = p.get("liquidity")
-        daily = liq in LIQUID or p.get("asset_class") == "Tesouro Selic" or (
+        cls = p.get("asset_class")
+        daily = (liq in LIQUID and cls not in MARKED_TO_MARKET) or cls == "Tesouro Selic" or (
             liq == "vencimento" and has_daily_liquidity({**p, "early_redemption": p.get("id") in redeemed}))
         if daily:
             total += p["balance"]
@@ -34,20 +38,9 @@ def reserva_liquida(s: Session, pos: dict) -> float:
 
 
 def _budgets(s: Session, month: str, cats: dict[str, Category]) -> dict[str, float]:
-    """Orçamento mensal por categoria (o do mês vence o padrão), somado nas categorias-mãe."""
-    base: dict[str, float] = {}
-    for b in s.scalars(select(Budget)):
-        if b.month in (None, month) and b.amount:
-            if b.month == month or b.category_id not in base:
-                base[b.category_id] = float(b.amount)
-    out: dict[str, float] = defaultdict(float)
-    for cid, v in base.items():
-        out[cid] += v
-        c = cats.get(cid)
-        while c is not None and c.parent_id:
-            out[c.parent_id] += v
-            c = cats.get(c.parent_id)
-    return out
+    """Orçamento efetivo por categoria (o do mês vence o padrão; mãe sem orçamento próprio = soma das filhas)."""
+    from app.analytics.overview import month_budgets, rollup_budgets
+    return rollup_budgets(month_budgets(s, month), cats)
 
 
 def _mean(vals: list[float]) -> float | None:
@@ -101,7 +94,7 @@ def dre_gerencial(s: Session, month: str | None = None) -> dict:
     vals = {r["key"]: r["values"] for r in d["rows"]}
     def series(key):
         return [vals[key].get(m, 0.0) for m in prev6]
-    desp6 = [-sum(vals[k].get(m, 0.0) for k in EXPENSE_LINES) for m in prev6]
+    desp6 = [-sum(vals[k].get(m, 0.0) for k in SPENDING_LINES) for m in prev6]  # mesmo conceito do Painel
     burn = _mean(desp6)
     ess6 = _mean([-v for v in series("essenciais")])
     pos = current_position(s)
@@ -125,5 +118,8 @@ def dre_gerencial(s: Session, month: str | None = None) -> dict:
     }
     return {"month": month, "parcial": month == month_key(today_brt()), "media_de": prev6, "ytd_de": ytd, "rows": rows, "indicadores": indicadores,
             "notas": ["Média = 6 meses fechados anteriores; YTD = acumulado do ano até o mês.",
+                      "Gasto médio = despesas abaixo da receita líquida, como no Painel "
+                      "(imposto de renda já sai da receita).",
                       "Resultado recorrente exclui itens extraordinários (herança, doações); a taxa de poupança usa só o recorrente.",
-                      "Reserva líquida = caixa + investimentos com liquidez D0/D1."]}
+                      "Reserva líquida = caixa + investimentos com liquidez D0/D1 sem marcação a mercado "
+                      "(fora Tesouro IPCA+/Prefixado)."]}

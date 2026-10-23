@@ -71,7 +71,22 @@ def curate() -> None:
         ok(c.put("/api/plan/targets", json=[{"asset_class": k, "target_pct": v} for k, v in
                                              [("RF Pós", .35), ("ETF Internacional", .25), ("ETF Ações BR", .15),
                                               ("Tesouro IPCA+", .15), ("FIIs", .10)]]))
-        ok(c.post("/api/goals", json={"name": "Viagem ao Japão", "target_amount": 25000, "target_date": "2027-12-01"}))
+        goal = ok(c.post("/api/goals", json={"name": "Viagem ao Japão", "target_amount": 25000,
+                                             "target_date": "2027-12-01", "priority": 1}))
+        # parte do CDB separada para a viagem e a conta corrente como reserva parcial: bolsos com dinheiro na vitrine
+        fontes = ok(c.get("/api/buckets"))
+        cdb = next((f for f in fontes["fontes"] if f["classe"] == "RF Pós"), None)
+        if cdb and goal.get("bucket_id"):
+            ok(c.put(f"/api/buckets/{goal['bucket_id']}/allocations",
+                     json=[{"source_type": cdb["type"], "source_id": cdb["id"], "pct": 0.6}]))
+        reserva = next(b for b in fontes["bolsos"] if b["tipo"] == "reserva")
+        conta = next((f for f in fontes["fontes"] if f["type"] == "account"), None)
+        if conta:
+            ok(c.put(f"/api/buckets/{reserva['id']}/allocations",
+                     json=[{"source_type": "account", "source_id": conta["id"], "pct": 0.7},
+                           *([{"source_type": cdb["type"], "source_id": cdb["id"], "pct": 0.3}] if cdb else [])]))
+        ok(c.post("/api/goals", json={"name": "Independência financeira", "kind": "aposentadoria",
+                                      "target_amount": 1500000, "target_date": "2050-01-01", "priority": 5}))
         item = ok(c.get("/api/connections"))["items"][0]
         ok(c.patch(f"/api/items/{item['id']}", json={"nickname": "Banco Roxinho"}))
         ok(c.post("/api/rebuild"))

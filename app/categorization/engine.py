@@ -32,6 +32,7 @@ class TxView:
     installment_number: int | None
     total_installments: int | None
     removed: bool
+    merchant_cnae: str | None = None  # subclasse CNAE (7 dígitos) do estabelecimento, quando informada
 
     @property
     def text(self) -> str:
@@ -80,8 +81,9 @@ def compile_rules(rules: Iterable[CategoryRule]) -> list[CompiledRule]:
     return out
 
 
-def _field_value(tx: TxView, fld: str) -> str:
+def _field_value(tx: TxView, fld: str, merchant_id: int | None = None) -> str:
     return {
+        "merchant_id": str(merchant_id) if merchant_id is not None else "",
         "description": tx.text,
         "merchant": norm(tx.party_name),
         "cnpj": tx.party_doc or "",
@@ -92,7 +94,11 @@ def _field_value(tx: TxView, fld: str) -> str:
     }.get(fld, tx.text)
 
 
-def match_rule(tx: TxView, rules: list[CompiledRule]) -> CategoryRule | None:
+EXACT_FIELDS = ("cnpj", "counterparty_doc", "account", "pluggy_category", "mcc", "merchant_id")
+
+
+def match_rule(tx: TxView, rules: list[CompiledRule], merchant_id: int | None = None) -> CategoryRule | None:
+    """`merchant_id`: comerciante já resolvido do lançamento (regras por comerciante, inclusive sem CNPJ)."""
     for cr in rules:
         r = cr.rule
         if r.direction == "in" and tx.flow <= 0 or r.direction == "out" and tx.flow >= 0:
@@ -102,8 +108,8 @@ def match_rule(tx: TxView, rules: list[CompiledRule]) -> CategoryRule | None:
         amt = abs(tx.flow)
         if r.amount_min is not None and amt < r.amount_min or r.amount_max is not None and amt > r.amount_max:
             continue
-        val = _field_value(tx, r.field)
-        pat = r.pattern if r.field in ("cnpj", "counterparty_doc", "account", "pluggy_category", "mcc") else norm(r.pattern)
+        val = _field_value(tx, r.field, merchant_id)
+        pat = r.pattern.strip() if r.field in EXACT_FIELDS else norm(r.pattern)
         if r.field in ("cnpj", "counterparty_doc"):
             pat = re.sub(r"\D", "", pat)
         ok = (cr.regex.search(val) is not None if cr.regex else
@@ -153,10 +159,11 @@ KEYWORDS: list[tuple[str, str, float, str | None]] = [
     (r"darf|receita federal|imposto de renda|\birpf\b", "impostos.ir", .8, "out"),
     (r"\bipva\b|detran|licenciamento", "transporte.seguro_impostos", .85, "out"),
     (r"saque", "saques", .8, "out"),
+    # dividendos antes de "rendimento": "rendimento fii" é provento (isento no IR), não juros em conta
+    (r"dividendo|jcp|juros sobre capital|rendimento fii", "finrec.dividendos", .85, "in"),
     (r"salario|folha de pagamento|proventos|bolsa estagio|bolsa-auxilio|bolsa auxilio", "rec.salario", .8, "in"),
     (r"rendimento|remuneracao da conta|juros sobre saldo", "finrec.juros", .6, "in"),
     (r"cashback|recompensa", "finrec.cashback", .8, "in"),
-    (r"dividendo|jcp|juros sobre capital|rendimento fii", "finrec.dividendos", .85, "in"),
 ]
 _KW = [(re.compile(rx), cat, conf, d) for rx, cat, conf, d in KEYWORDS]
 

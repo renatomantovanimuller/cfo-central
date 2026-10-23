@@ -29,7 +29,10 @@ def db_reset():
     else:
         Base.metadata.drop_all(engine)
     migrate()
-    return session_factory()
+    yield session_factory()
+    # sessão esquecida aberta por um teste trava o SQLite no drop_all do próximo
+    from sqlalchemy.orm import close_all_sessions
+    close_all_sessions()
 
 
 @pytest.fixture()

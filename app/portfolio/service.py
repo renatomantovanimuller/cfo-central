@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from app.alerts.reviews import ReviewCandidate, fmt_brl
 from app.categorization.text import norm
 from app.config.settings import get_settings
-from app.models import (Asset, AssetPrice, FinancialEvent, Institution, Investment, InvestmentBalance,
-                        InvestmentTransaction, Item)
+from app.models import (Asset, AssetPrice, FinancialEvent, Investment, InvestmentBalance,
+                        InvestmentTransaction)
 from app.portfolio import metrics as M
 from app.portfolio.classification import RISK_BUCKET, classify
 from app.portfolio.market import BENCHMARKS, accumulated, cdi_daily, ipca_accumulated, price_frame, series_frame
@@ -56,8 +56,8 @@ def _issuer_key(name: str | None, cnpj: str | None) -> str:
 
 # ------------------------------------------------------------------ posições
 def positions(s: Session) -> list[dict]:
-    insts = {i.id: i.name for i in s.scalars(select(Institution))}
-    items = {i.id: (i.nickname or insts.get(i.institution_id, "")) for i in s.scalars(select(Item))}
+    from app.accounting.institutions import institution_labels
+    items = institution_labels(s)
     assets = {a.id: a for a in s.scalars(select(Asset))}
     cdi = cdi_daily(s, today_brt() - timedelta(days=365 * 6))
     today = today_brt()

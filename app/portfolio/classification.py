@@ -6,11 +6,11 @@ import re
 from app.categorization.text import norm
 
 ETF_INTL = {"IVVB11", "SPXR11", "SPXI11", "NASD11", "WRLD11", "ACWI11", "EURP11", "XINA11", "BBSD11", "TECK11",
-            "SMAC11", "GOLD11", "USDB11", "ASIA11", "QQQM11", "BIEM11", "IMBB11"}
+            "SMAC11", "GOLD11", "USDB11", "ASIA11", "QQQM11", "BIEM11", "ALUG11"}
 ETF_BR_EQUITY = {"BOVA11", "BOVV11", "BOVX11", "SMAL11", "DIVO11", "BOVB11", "PIBB11", "ECOO11", "MATB11",
                  "FIND11", "GOVE11", "BRAX11", "XBOV11", "NSDV11", "DIVD11", "SMAB11"}
 ETF_FIXED = {"B5P211", "IMAB11", "IRFM11", "FIXA11", "LFTS11", "IB5M11", "B5MB11", "IMBB11", "DEBB11",
-             "NTNS11", "LFTB11", "IDKA11", "5PRE11", "ALUG11"}
+             "NTNS11", "LFTB11", "IDKA11", "5PRE11"}
 ETF_CRYPTO = {"HASH11", "QBTC11", "BITH11", "ETHE11", "QETH11", "BITI11", "CRPT11", "DEFI11", "NFTS11"}
 FGC_SUBTYPES = {"CDB", "LCI", "LCA", "LC", "RDB", "LCD", "LIG", "POUPANCA"}
 TICKER_RE = re.compile(r"^(?=[A-Z0-9]*[A-Z])[A-Z0-9]{4}\d{1,2}[A-Z]?$")

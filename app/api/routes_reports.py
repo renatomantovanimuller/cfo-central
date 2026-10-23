@@ -5,7 +5,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,7 +15,8 @@ from app.analytics import overview as O
 from app.analytics.export import export_csv, export_xlsx
 from app.auth.security import CurrentUser
 from app.database.session import get_db
-from app.models import (AccountSetting, Asset, FinancialGoal, ManualAsset, RecurringRule)
+from app.models import (AccountSetting, Asset, Bucket, BucketAllocation, FinancialGoal, ManualAsset,
+                        RecurringRule)
 from app.portfolio import service as P
 from app.utils.time import month_key, today_brt
 
@@ -57,6 +58,31 @@ def balance(db: Session = Depends(get_db)) -> dict:
     p = B.current_position(db)
     p.pop("positions", None)
     return p
+
+
+@router.get("/patrimony")
+def patrimony(db: Session = Depends(get_db)) -> dict:
+    from app.analytics.patrimonio import consolidated
+    return P._clean(consolidated(db))
+
+
+@router.get("/patrimony/bridge")
+def patrimony_bridge(months: int = 12, db: Session = Depends(get_db)) -> dict:
+    from app.analytics.patrimonio import bridge
+    return P._clean(bridge(db, max(2, min(months, 24))))
+
+
+@router.get("/patrimony/evolution")
+def patrimony_evolution(months: int = 12, db: Session = Depends(get_db)) -> dict:
+    from app.analytics.patrimonio import evolution
+    return P._clean(evolution(db, max(2, min(months, 36))))
+
+
+@router.get("/patrimony/projection")
+def patrimony_projection(years: int = 10, alvo: float | None = None, inflacao: float = 0.04,
+                         db: Session = Depends(get_db)) -> dict:
+    from app.analytics.patrimonio import projection
+    return P._clean(projection(db, max(1, min(years, 40)), alvo, max(0.0, min(inflacao, 0.2))))
 
 
 @router.get("/balance/history")
@@ -128,41 +154,67 @@ def patch_asset(asset_id: int, body: AssetPatch, db: Session = Depends(get_db)) 
 # ------------------------------------------------------------------ planejamento
 @router.get("/planning")
 def planning(db: Session = Depends(get_db)) -> dict:
+    from app.analytics import metas as MT
+    from app.analytics import plano as PL
     ov = O.overview(db)
     pos = B.current_position(db)
-    goals = []
-    for g in db.scalars(select(FinancialGoal)):
-        current = {"net_worth": pos["totals"]["net_worth"], "investments": pos["totals"]["investments"],
-                   "asset_class": pos["investments_by_class"].get(g.asset_class or "", 0.0),
-                   "manual": g.manual_current or 0.0}.get(g.basis, 0.0)
-        months_left = None
-        needed = None
-        if g.target_date:
-            months_left = max(1, (g.target_date.year - today_brt().year) * 12 + g.target_date.month - today_brt().month)
-            r = (1 + g.expected_return_aa) ** (1 / 12) - 1
-            fv_current = current * (1 + r) ** months_left
-            gap = g.target_amount - fv_current
-            needed = gap * r / ((1 + r) ** months_left - 1) if gap > 0 and r > 0 else max(0.0, gap / months_left)
-        goals.append({"id": g.id, "name": g.name, "target_amount": g.target_amount, "target_date": g.target_date,
-                      "basis": g.basis, "asset_class": g.asset_class, "current": current,
-                      "progress": current / g.target_amount if g.target_amount else None,
-                      "months_left": months_left, "monthly_needed": needed, "expected_return_aa": g.expected_return_aa})
+    cfg = PL.plan(db)
+    sts = PL.safe_to_spend(db)
+    aporte = sts["meta_aporte"]
+    politica = PL.policy_report(db, aporte=aporte)
+    goals = MT.goals_status(db, pos)
+    total_inv = sum(c["valor"] for c in politica["classes"])
+    plano_aportes = MT.contribution_plan(aporte, politica["reserva"], goals, politica["classes"], total_inv)
+    politica["aporte"] = {"valor": aporte, "destinos": plano_aportes["destinos"]}
+    for g in plano_aportes["metas"]:
+        if g["months_left"] and g["target_amount"]:
+            mensal = g["aporte_alocado"] if g["aporte_alocado"] is not None else 0.0
+            mu, sigma, fonte = PL.portfolio_mu_sigma(db, g["expected_return_aa"])
+            g["simulacao"] = {**PL.monte_carlo(g["current"], g["target_amount"], g["months_left"], mensal, mu, sigma),
+                              "fonte_risco": fonte, "aporte_mensal": mensal}
     recurring = [{c.name: getattr(r, c.name) for c in RecurringRule.__table__.columns}
                  for r in db.scalars(select(RecurringRule).order_by(RecurringRule.expected_amount.desc()))]
-    from app.analytics import plano as PL
-    cfg = PL.plan(db)
-    aporte = cfg["meta_aporte_mensal"]
-    if aporte is None:
-        aporte = max(0.0, ov["capacity"]["median_result_6m"] or 0.0)
-    for g in goals:
-        if g["months_left"]:
-            mu, sigma, fonte = PL.portfolio_mu_sigma(db, g["expected_return_aa"])
-            g["simulacao"] = {**PL.monte_carlo(g["current"], g["target_amount"], g["months_left"], aporte, mu, sigma),
-                              "fonte_risco": fonte}
-    return {"forecast": O.liquidity_forecast(db), "recurring": recurring, "goals": goals,
+    gasto_anual = (ov["kpis"]["avg6"].get("despesas") or 0.0) * 12
+    return {"forecast": O.liquidity_forecast(db), "recurring": recurring, "goals": plano_aportes["metas"],
             "capacity": ov["capacity"], "kpis": ov["kpis"], "budget": O.budget_execution(db, ov["month"]),
-            "plano": cfg, "aporte_simulacao": aporte, "safe_to_spend": PL.safe_to_spend(db),
-            "politica": PL.policy_report(db)}
+            "plano": cfg, "aporte_simulacao": aporte, "safe_to_spend": sts, "politica": politica,
+            "plano_aportes": {k: v for k, v in plano_aportes.items() if k != "metas"},
+            "aportes_realizados": MT.contributions_history(db, cfg["meta_aporte_mensal"] or aporte),
+            "sugestao_independencia": {"gasto_anual": round(gasto_anual, 2), "taxa_retirada": MT.SAFE_WITHDRAWAL,
+                                       "valor": round(gasto_anual / MT.SAFE_WITHDRAWAL, 2) if gasto_anual else None},
+            "aumentos": PL.salary_raises(db)}
+
+
+@router.get("/today")
+def today_view(db: Session = Depends(get_db)) -> dict:
+    from app.analytics.hoje import today_view as TV
+    return P._clean(TV(db))
+
+
+class AckBody(BaseModel):
+    missao: str
+
+
+@router.post("/today/ack")
+def today_ack(body: AckBody, db: Session = Depends(get_db)) -> dict:
+    from app.analytics.hoje import acknowledge
+    acknowledge(db, body.missao[:40])
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/today/checkin")
+def today_checkin(db: Session = Depends(get_db)) -> dict:
+    from app.analytics.hoje import check_in
+    res = check_in(db)
+    db.commit()
+    return res
+
+
+@router.get("/financial-health")
+def financial_health(db: Session = Depends(get_db)) -> dict:
+    from app.analytics.saude_financeira import financial_health as FH
+    return FH(db)
 
 
 class PlanSettingsBody(BaseModel):
@@ -170,6 +222,8 @@ class PlanSettingsBody(BaseModel):
     reserva_meses_minima: float | None = None
     limite_fgc: float | None = None
     retorno_esperado_aa: float | None = None
+    aumento_para_aporte: float | None = Field(default=None, ge=0, le=1)
+    score_credito: float | None = Field(default=None, ge=0, le=1000)
 
 
 @router.put("/plan/settings")
@@ -199,26 +253,146 @@ class GoalBody(BaseModel):
     name: str
     target_amount: float
     target_date: date | None = None
-    basis: str = "net_worth"
+    basis: str = "bucket"  # bucket (recomendado) | investments | net_worth | asset_class | manual
     asset_class: str | None = None
     manual_current: float | None = None
     expected_return_aa: float = 0.10
+    kind: str = "prazo"
+    priority: int = 100
+
+
+class GoalPatch(BaseModel):
+    name: str | None = None
+    target_amount: float | None = None
+    target_date: date | None = None
+    basis: str | None = None
+    expected_return_aa: float | None = None
+    kind: str | None = None
+    priority: int | None = None
+
+
+def _goal_bucket(db: Session, g: FinancialGoal):
+    """Bolso da meta (criado na primeira vez). Meta de aposentadoria vira bolso de aposentadoria."""
+    b = db.scalar(select(Bucket).where(Bucket.goal_id == g.id))
+    if b is None:
+        b = Bucket(name=g.name, goal_id=g.id, kind="aposentadoria" if g.kind == "aposentadoria" else "objetivo")
+        db.add(b)
+        db.flush()
+    return b
 
 
 @router.post("/goals")
 def create_goal(body: GoalBody, db: Session = Depends(get_db)) -> dict:
+    if body.kind not in ("prazo", "aposentadoria", "livre"):
+        raise HTTPException(400, "tipo de meta inválido")
     g = FinancialGoal(**body.model_dump())
     db.add(g)
     db.flush()
-    return {"ok": True, "id": g.id}
+    bucket_id = _goal_bucket(db, g).id if g.basis == "bucket" else None
+    return {"ok": True, "id": g.id, "bucket_id": bucket_id}
+
+
+@router.patch("/goals/{goal_id}")
+def patch_goal(goal_id: int, body: GoalPatch, db: Session = Depends(get_db)) -> dict:
+    g = db.get(FinancialGoal, goal_id)
+    if not g:
+        raise HTTPException(404)
+    data = body.model_dump(exclude_unset=True)
+    if "kind" in data and data["kind"] not in ("prazo", "aposentadoria", "livre"):
+        raise HTTPException(400, "tipo de meta inválido")
+    for k, v in data.items():
+        setattr(g, k, v)
+    if g.basis == "bucket":
+        b = _goal_bucket(db, g)
+        b.name = g.name
+        b.kind = "aposentadoria" if g.kind == "aposentadoria" else "objetivo"
+    return {"ok": True}
 
 
 @router.delete("/goals/{goal_id}")
 def delete_goal(goal_id: int, db: Session = Depends(get_db)) -> dict:
     g = db.get(FinancialGoal, goal_id)
     if g:
+        for b in db.scalars(select(Bucket).where(Bucket.goal_id == goal_id)):
+            for a in db.scalars(select(BucketAllocation).where(BucketAllocation.bucket_id == b.id)):
+                db.delete(a)
+            db.delete(b)
         db.delete(g)
     return {"ok": True}
+
+
+# ------------------------------------------------------------------ bolsos
+@router.get("/buckets")
+def buckets(db: Session = Depends(get_db)) -> dict:
+    from app.analytics.bolsos import buckets_report, ensure_reserve_bucket
+    ensure_reserve_bucket(db)
+    db.commit()
+    return P._clean(buckets_report(db))
+
+
+class BucketBody(BaseModel):
+    name: str
+    kind: str = "objetivo"
+
+
+@router.post("/buckets")
+def create_bucket(body: BucketBody, db: Session = Depends(get_db)) -> dict:
+    if body.kind not in ("objetivo", "aposentadoria"):
+        raise HTTPException(400, "tipo de bolso inválido (a reserva já existe)")
+    b = Bucket(name=body.name.strip()[:120] or "Bolso", kind=body.kind)
+    db.add(b)
+    db.flush()
+    return {"ok": True, "id": b.id}
+
+
+@router.patch("/buckets/{bucket_id}")
+def rename_bucket(bucket_id: int, body: BucketBody, db: Session = Depends(get_db)) -> dict:
+    b = db.get(Bucket, bucket_id)
+    if not b:
+        raise HTTPException(404)
+    b.name = body.name.strip()[:120] or b.name
+    return {"ok": True}
+
+
+@router.delete("/buckets/{bucket_id}")
+def delete_bucket(bucket_id: int, db: Session = Depends(get_db)) -> dict:
+    b = db.get(Bucket, bucket_id)
+    if not b:
+        return {"ok": True}
+    if b.kind == "reserva" or b.goal_id:
+        raise HTTPException(400, "a reserva não pode ser excluída; bolso de meta sai junto com a meta")
+    for a in db.scalars(select(BucketAllocation).where(BucketAllocation.bucket_id == b.id)):
+        db.delete(a)
+    db.delete(b)
+    return {"ok": True}
+
+
+class AllocationItem(BaseModel):
+    source_type: str
+    source_id: str
+    pct: float = Field(ge=0, le=1)
+
+
+@router.put("/buckets/{bucket_id}/allocations")
+def put_allocations(bucket_id: int, body: list[AllocationItem], db: Session = Depends(get_db)) -> dict:
+    from app.analytics.bolsos import buckets_report, set_allocations
+    if not db.get(Bucket, bucket_id):
+        raise HTTPException(404)
+    try:
+        set_allocations(db, bucket_id, [x.model_dump() for x in body])
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    db.commit()
+    return P._clean(buckets_report(db))
+
+
+@router.post("/buckets/suggest-reserve")
+def suggest_reserve(db: Session = Depends(get_db)) -> dict:
+    from app.analytics.bolsos import buckets_report
+    from app.analytics.bolsos import suggest_reserve as SR
+    res = SR(db)
+    db.commit()
+    return {**res, "bolsos": P._clean(buckets_report(db))}
 
 
 @router.patch("/recurring/{rec_id}")
@@ -255,20 +429,30 @@ class ManualBody(BaseModel):
     as_of: date | None = None
     notes: str | None = None
     active: bool = True
+    acquired_at: date | None = None
+    growth_aa: float | None = Field(default=None, ge=-0.5, le=0.5)
 
 
 @router.get("/manual-assets")
 def manual_assets(db: Session = Depends(get_db)) -> list[dict]:
-    return [{c.name: getattr(m, c.name) for c in ManualAsset.__table__.columns} for m in db.scalars(select(ManualAsset))]
+    from app.accounting.manual import points_by_asset, value_at
+    pts = points_by_asset(db)
+    today = today_brt()
+    return [{**{c.name: getattr(m, c.name) for c in ManualAsset.__table__.columns},
+             "valor_atual": round(value_at(m, pts.get(m.id), today), 2),
+             "historico": [{"data": d, "valor": v} for d, v in pts.get(m.id, [])]}
+            for m in db.scalars(select(ManualAsset))]
 
 
 @router.post("/manual-assets")
 def create_manual(body: ManualBody, db: Session = Depends(get_db)) -> dict:
     if body.kind not in ("asset", "liability"):
         raise HTTPException(400, "kind deve ser asset ou liability")
+    from app.accounting.manual import record_point
     m = ManualAsset(**{**body.model_dump(), "as_of": body.as_of or today_brt()})
     db.add(m)
     db.flush()
+    record_point(db, m)
     return {"ok": True, "id": m.id}
 
 
@@ -277,8 +461,11 @@ def update_manual(mid: int, body: ManualBody, db: Session = Depends(get_db)) -> 
     m = db.get(ManualAsset, mid)
     if not m:
         raise HTTPException(404)
+    from app.accounting.manual import record_point
     for k, v in body.model_dump().items():
         setattr(m, k, v if k != "as_of" else (v or today_brt()))
+    db.flush()
+    record_point(db, m)  # nova atualização vira ponto do histórico; os anteriores ficam
     return {"ok": True}
 
 

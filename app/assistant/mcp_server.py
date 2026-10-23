@@ -505,7 +505,9 @@ def _rule_body(padrao: str, campo: str, operador: str, categoria: str | None, ti
 
 
 @mcp.tool()
-def simular_regra(padrao: str, campo: Literal["description", "merchant", "cnpj", "pluggy_category", "mcc", "account"] = "description",
+def simular_regra(padrao: str,
+                  campo: Literal["description", "merchant", "merchant_id", "cnpj", "pluggy_category", "mcc",
+                                 "account"] = "description",
                   operador: Literal["contains", "equals", "starts", "regex"] = "contains",
                   sentido: Literal["in", "out"] | None = None, valor_min: float | None = None,
                   valor_max: float | None = None) -> dict:
@@ -517,7 +519,8 @@ def simular_regra(padrao: str, campo: Literal["description", "merchant", "cnpj",
 
 @mcp.tool()
 def criar_regra(padrao: str, categoria: str | None = None, tipo: str | None = None,
-                campo: Literal["description", "merchant", "cnpj", "pluggy_category", "mcc", "account"] = "description",
+                campo: Literal["description", "merchant", "merchant_id", "cnpj", "pluggy_category", "mcc",
+                               "account"] = "description",
                 operador: Literal["contains", "equals", "starts", "regex"] = "contains",
                 sentido: Literal["in", "out"] | None = None, valor_min: float | None = None,
                 valor_max: float | None = None, nome: str | None = None, prioridade: int = 100) -> dict:

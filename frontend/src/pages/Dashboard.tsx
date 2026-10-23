@@ -8,6 +8,7 @@ import { Delta, Empty, Money, Panel } from "../components/ui";
 import { ProvisionalBanner, SetupChecklist, Welcome } from "../components/Onboarding";
 import { reviewSummary } from "../components/reviewBadge";
 import { Term } from "../components/Term";
+import { HealthCard } from "../components/FinancialHealth";
 import { useOnboarding } from "../hooks/useOnboarding";
 import { brl, compact, date, isPartialMonth, monthAxisLabel, monthLabel, monthLong, PARTIAL_OPACITY, pct, prettyName, today } from "../format";
 
@@ -76,7 +77,8 @@ export default function Dashboard() {
         <div><div className="lbl">Despesas</div><div className="val num" style={{ textAlign: "left" }}>{brl(k.current.despesas)}</div>
           <div className="sub"><Delta cur={k.current.despesas} ref_={k.previous.despesas} invert /> · média 6m {compact(k.avg6.despesas)}</div></div>
         <div><div className="lbl"><Term k="resultado_recorrente">Sobra do mês</Term></div><div className={`val num ${k.current.resultado < 0 ? "neg" : "pos"}`} style={{ textAlign: "left" }}>{brl(k.current.resultado)}</div>
-          <div className="sub">média 6m {compact(k.avg6.resultado)}{k.current.extraordinarios ? ` · + ${compact(k.current.extraordinarios)} extraordinário` : ""}</div></div>
+          <div className="sub">média 6m {compact(k.avg6.resultado)}{k.current.extraordinarios ? ` · + ${compact(k.current.extraordinarios)} extraordinário` : ""}
+            {k.current.a_classificar_entradas ? <> · <a href="/revisao" title="Entradas que ainda não contam como renda: classifique na Revisão" onClick={(e) => { e.preventDefault(); nav("/revisao"); }}>+ {compact(k.current.a_classificar_entradas)} a classificar</a></> : null}</div></div>
         <div><div className="lbl"><Term k="poupanca">Taxa de poupança</Term></div><div className="val" >{pct(k.current.taxa_poupanca, 0)}</div>
           <div className="sub">média 6m {pct(k.avg6.taxa_poupanca, 0)}</div></div>
         <div><div className="lbl"><Term k="aporte">Investido no mês</Term></div><div className="val num" style={{ textAlign: "left" }}>{brl(k.invested_net)}</div>
@@ -86,6 +88,7 @@ export default function Dashboard() {
       </section>
 
       {d.safe_to_spend && <SafeToSpend s={d.safe_to_spend} onPlan={() => nav("/planejamento")} />}
+      <HealthCard onOpen={() => nav("/planejamento")} />
 
       {!hasData && <Panel><Empty title={`Sem lançamentos em ${monthLong(month)}`}>Escolha outro mês no seletor acima ou sincronize para buscar novidades.</Empty></Panel>}
 
@@ -146,7 +149,7 @@ export default function Dashboard() {
 }
 
 function SafeToSpend({ s, onPlan }: { s: any; onPlan: () => void }) {
-  const used = s.renda_prevista > 0 ? (s.gasto_ate_hoje + s.comprometido + s.meta_aporte) / s.renda_prevista : 0;
+  const used = s.renda_prevista > 0 ? (s.gasto_ate_hoje + s.comprometido + (s.provisao ?? 0) + s.meta_aporte) / s.renda_prevista : 0;
   return (
     <section className="panel safe">
       <div className="safe-main">
@@ -164,6 +167,8 @@ function SafeToSpend({ s, onPlan }: { s: any; onPlan: () => void }) {
             {s.meta_aporte_origem === "padrao_limitado" && <div className="note" style={{ whiteSpace: "normal" }}>sugestão limitada ao que sobrou nos últimos meses</div>}</dd>
           <dt>− Gasto até hoje</dt><dd className="num">{brl(s.gasto_ate_hoje)}</dd>
           <dt>− Recorrências a vencer</dt><dd className="num">{brl(s.comprometido)}{s.recorrencias_pendentes.length ? ` (${s.recorrencias_pendentes.length})` : ""}</dd>
+          {s.provisao > 0 && <><dt title="1/12 das despesas anuais previstas, para não virarem surpresa no mês em que vencem">− Provisão de despesas anuais</dt>
+            <dd className="num" title={s.provisoes_anuais.map((p: any) => `${prettyName(p.descricao)}: ${brl(p.anual, 0)} em ${date(p.data)}`).join("\n")}>{brl(s.provisao)} ({s.provisoes_anuais.length})</dd></>}
         </dl>
         <details><summary className="note">Premissas</summary><ul className="assumptions">{s.premissas.map((p: string, i: number) => <li key={i}>{p}</li>)}</ul></details>
       </div>

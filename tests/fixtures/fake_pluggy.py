@@ -102,6 +102,10 @@ class FakePluggyClient:
                                            ("04000000", "Same person transfer"), "PIX", payer=me, receiver=me))
             if (d := day(28)):
                 self._bank.append(self._tx(BANK_ID, d, "IOF", -round(r.uniform(0.5, 3), 2), ("15030000", "Tax on financial operations")))
+            # despesa anual (valor fixo, sem consumir o gerador: não altera os demais lançamentos)
+            if k == 10 and (d := day(15)):
+                self._bank.append(self._tx(BANK_ID, d, "Pagamento de boleto|IPVA SECRETARIA DA FAZENDA", -1850.0,
+                                           ("19050004", "Vehicle taxes"), "BOLETO"))
 
             # cartão: compras (amount positivo = compra)
             card_total = 0.0

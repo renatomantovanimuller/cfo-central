@@ -18,6 +18,11 @@ def test_extraordinary_income_kept_out_of_recurring_result(synced):
     from app.services.pipeline import pipeline
     sf = synced["sf"]
     sid, month, amount = _month_with_income(sf)
+    # na massa fictícia o salário chega como Pix sem decisão (fora do recorrente): classifica como o usuário faria
+    with sf() as s:
+        _apply_override(s, sid, EventPatch(category_id="rec.salario", learn=False))
+        s.commit()
+    pipeline.rebuild_now("test")
     with sf() as s:
         before = {r["key"]: r["values"][month] for r in dre(s, [month], False)["rows"]}
         _apply_override(s, sid, EventPatch(category_id="rec.heranca"))
@@ -42,7 +47,9 @@ def test_safe_to_spend_and_policy(synced):
         put_setting(s, "plano", {"meta_aporte_mensal": 1000.0})
         sts = safe_to_spend(s)
         assert sts["meta_aporte"] == 1000.0
-        assert round(sts["disponivel"], 2) == round(sts["renda_prevista"] - 1000 - sts["gasto_ate_hoje"] - sts["comprometido"], 2)
+        assert round(sts["disponivel"], 2) == round(sts["renda_prevista"] - 1000 - sts["gasto_ate_hoje"] - sts["comprometido"]
+                                                    - sts["provisao"], 2)
+        assert sts["provisao"] == round(1850 / 12, 2)  # IPVA anual da massa fictícia, provisionado mês a mês
         rep = policy_report(s)
         classes = [c["classe"] for c in rep["classes"]]
         assert classes and all(c["status"] == "sem alvo" for c in rep["classes"])

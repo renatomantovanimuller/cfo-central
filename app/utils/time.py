@@ -29,7 +29,13 @@ def local_date(value: str | None) -> date | None:
     if len(value) == 10:
         return date.fromisoformat(value)
     dt = parse_dt(value)
-    return dt.astimezone(BRT).date() if dt else None
+    if dt is None:
+        return None
+    # meia-noite UTC exata é data sem horário (vencimentos, alguns conectores): converter para Brasília
+    # recuaria um dia (01/05 00:00Z → 30/04 21:00) e mudaria o mês de lançamentos do dia 1º
+    if dt.utcoffset() == timedelta(0) and (dt.hour, dt.minute, dt.second, dt.microsecond) == (0, 0, 0, 0):
+        return dt.date()
+    return dt.astimezone(BRT).date()
 
 
 def month_key(d: date) -> str:

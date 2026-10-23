@@ -1,7 +1,8 @@
 """Plano de contas pessoal (seed) e mapa de categorias Pluggy → plano próprio.
 
 dre_line: receita_operacional | outras_receitas | impostos_renda | essenciais | estilo_vida | terceiros |
-          receitas_financeiras | despesas_financeiras | nao_classificado | None (patrimonial)
+          receitas_financeiras | despesas_financeiras | nao_classificado | extraordinarios | entradas_a_classificar |
+          None (patrimonial)
 """
 from __future__ import annotations
 
@@ -19,7 +20,8 @@ CHART: list[tuple] = [
     ("rec.beneficios", "rec", "Benefícios e auxílios", "receita", "receita_operacional", False, "INCOME", None),
     ("rec.presentes", "rec", "Presentes recebidos", "receita", "outras_receitas", False, "INCOME", None),
     ("rec.vendas", "rec", "Venda de bens", "receita", "outras_receitas", False, "INCOME", None),
-    ("rec.pix_terceiros", "rec", "Recebido de terceiros (a classificar)", "receita", "outras_receitas", False, "INCOME", None),
+    ("rec.pix_terceiros", "rec", "Recebido de terceiros (a classificar)", "receita", "entradas_a_classificar", False,
+     "INCOME", None),
     ("rec.heranca", "rec", "Herança e doações recebidas", "receita", "extraordinarios", False, "INCOME", None),
     ("rec.outras", "rec", "Outras receitas", "receita", "outras_receitas", False, "INCOME", None),
     # Receitas financeiras
@@ -179,8 +181,8 @@ PLUGGY_MAP: dict[str, tuple[str, float]] = {
     "19050001": ("transporte.combustivel", .85), "19050002": ("transporte.estacionamento", .9),
     "19050003": ("transporte.estacionamento", .9), "19050004": ("transporte.seguro_impostos", .9),
     "19050005": ("transporte.manutencao", .9), "19050006": ("findesp.multas", .9),
-    "20000000": ("servicos.seguros", .85), "200100000": ("servicos.seguros", .9), "200200000": ("servicos.seguros", .9),
-    "200300000": ("saude.plano", .9), "200400000": ("transporte.seguro_impostos", .9),
+    "20000000": ("servicos.seguros", .85), "20010000": ("servicos.seguros", .9), "20020000": ("servicos.seguros", .9),
+    "20030000": ("saude.plano", .9), "20040000": ("transporte.seguro_impostos", .9),
     "21000000": ("lazer.outros", .6),
     "99999999": ("nc", .2),
 }
@@ -196,12 +198,15 @@ DRE_LINES = [
     ("receitas_financeiras", "Receitas financeiras", 1),
     ("despesas_financeiras", "Despesas financeiras", -1),
     ("extraordinarios", "Itens extraordinários", 1),
+    # entrada sem decisão (Pix de terceiro: renda? reembolso? empréstimo devolvido?) não é renda até você dizer
+    ("entradas_a_classificar", "Entradas a classificar", 1),
 ]
 
 # ajustes em categorias de sistema já gravadas (id, campo, valor antigo, valor novo): rodam uma vez, sem
 # tocar no que o usuário tenha mudado para outro valor
 CATEGORY_UPGRADES = [
     ("rec.heranca", "dre_line", "outras_receitas", "extraordinarios"),
+    ("rec.pix_terceiros", "dre_line", "outras_receitas", "entradas_a_classificar"),
 ]
 
 

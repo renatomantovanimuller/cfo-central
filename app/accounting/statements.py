@@ -5,9 +5,10 @@ from collections import defaultdict
 from datetime import date
 
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.accounting.effective import STALE, SUPERSEDED
 from app.categorization.chart import DRE_LINES
 from app.models import Account, AccountBalance, Category, EventType, FinancialEvent
 from app.utils.time import month_add, month_bounds, month_key, today_brt
@@ -21,11 +22,15 @@ SUBTOTALS = [
     ("margem_essenciais", "Margem após essenciais", ["receita_liquida", "essenciais"]),
     ("resultado_operacional", "Resultado operacional", ["margem_essenciais", "estilo_vida", "terceiros", "nao_classificado"]),
     ("resultado_liquido", "Resultado recorrente (poupança)", ["resultado_operacional", "receitas_financeiras", "despesas_financeiras"]),
-    ("resultado_total", "Resultado total", ["resultado_liquido", "extraordinarios"]),
+    ("resultado_total", "Resultado total", ["resultado_liquido", "extraordinarios", "entradas_a_classificar"]),
 ]
+# "Despesas" em todas as telas = linhas abaixo da receita líquida (impostos sobre a renda já saem da receita),
+# de modo que receita líquida − despesas + receitas financeiras = resultado recorrente
+SPENDING_LINES = ["essenciais", "estilo_vida", "terceiros", "nao_classificado", "despesas_financeiras"]
 DRE_ORDER = ["receita_operacional", "outras_receitas", "impostos_renda", "receita_liquida", "essenciais",
              "margem_essenciais", "estilo_vida", "terceiros", "nao_classificado", "resultado_operacional",
-             "receitas_financeiras", "despesas_financeiras", "resultado_liquido", "extraordinarios", "resultado_total"]
+             "receitas_financeiras", "despesas_financeiras", "resultado_liquido", "extraordinarios",
+             "entradas_a_classificar", "resultado_total"]
 
 
 def month_list(end: str | None = None, n: int = 12) -> list[str]:
@@ -39,7 +44,9 @@ def _events_frame(s: Session, start: date, end: date, types: set[str] | None = N
     q = (select(FinancialEvent.source_id, FinancialEvent.amount, FinancialEvent.event_type,
                 FinancialEvent.category_id, col.label("d"), Account.type.label("acc_type"))
          .join(Account, Account.id == FinancialEvent.account_id)
-         .where(FinancialEvent.is_removed.is_(False), col >= start, col <= end))
+         .where(FinancialEvent.is_removed.is_(False), col >= start, col <= end,
+                # pendente duplicado (já efetivado com outro id) ou velho sem efetivação nunca foi dinheiro
+                or_(FinancialEvent.rule_id.is_(None), FinancialEvent.rule_id.not_in([SUPERSEDED, STALE]))))
     if types:
         q = q.where(FinancialEvent.event_type.in_(types))
     if bank_only:
@@ -175,7 +182,7 @@ DFC_LINES = [
 def dfc(s: Session, months: list[str]) -> dict:
     start, _ = month_bounds(months[0])
     _, end = month_bounds(months[-1])
-    df = _events_frame(s, start, end, bank_only=True)
+    df = _events_frame(s, start, end, bank_only=True, date_col="cash_date")
     # recebimentos e despesas separados por sentido
     sections = []
     total = {m: 0.0 for m in months}
@@ -195,7 +202,7 @@ def dfc(s: Session, months: list[str]) -> dict:
 
     # saldo de caixa (contas BANK): atual − fluxos posteriores = reconstrução; conferência contra snapshots reais
     cash_now = sum(a.balance or 0 for a in s.scalars(select(Account).where(Account.type == "BANK", Account.removed_at.is_(None))))
-    all_after = _events_frame(s, start, date(2100, 1, 1), bank_only=True)
+    all_after = _events_frame(s, start, date(2100, 1, 1), bank_only=True, date_col="cash_date")
     opening, closing, check = {}, {}, {}
     snaps = s.execute(select(AccountBalance.date, AccountBalance.balance).join(Account, Account.id == AccountBalance.account_id)
                       .where(Account.type == "BANK", AccountBalance.is_inferred.is_(False))).all()

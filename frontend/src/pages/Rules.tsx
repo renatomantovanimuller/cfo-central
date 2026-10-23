@@ -11,7 +11,7 @@ import { api } from "../api";
 import { CategorySelect, Chip, EventTypeSelect, Money, Panel, useToast } from "../components/ui";
 import { date, EVENT_LABELS } from "../format";
 
-const FIELDS: Record<string, string> = { description: "Descrição", merchant: "Nome do comerciante/contraparte",
+const FIELDS: Record<string, string> = { description: "Descrição", merchant: "Nome do comerciante/contraparte", merchant_id: "Comerciante (nº do cadastro)",
   cnpj: "CNPJ/CPF da contraparte", pluggy_category: "Categoria Pluggy (código)", mcc: "MCC do cartão", account: "Conta (id)" };
 const OPS: Record<string, string> = { contains: "contém", equals: "é igual a", starts: "começa com", regex: "regex" };
 
