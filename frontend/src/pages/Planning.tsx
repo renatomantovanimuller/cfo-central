@@ -11,16 +11,18 @@ import { Chart, cssVar, kTick } from "../components/Chart";
 import { Chip, Money, Panel, useToast } from "../components/ui";
 import { brl, date, monthLabel, pct, prettyName } from "../format";
 import { Term } from "../components/Term";
+import { useNavigate } from "react-router-dom";
 import { HealthDetail } from "../components/FinancialHealth";
 
 export default function Planning() {
+  const nav = useNavigate();
   const q = useQuery({ queryKey: ["planning"], queryFn: () => api<any>("/api/planning") });
-  const [g, setG] = useState({ name: "", target_amount: "", target_date: "", basis: "investments", expected_return_aa: "10" });
+  const [g, setG] = useState({ name: "", target_amount: "", target_date: "", basis: "bucket", kind: "prazo", priority: "100", expected_return_aa: "10" });
   const vTarget = validateNumber(g.target_amount, { required: true, allowNegative: false, min: 0.01 });
   const vReturn = validateNumber(g.expected_return_aa, { required: true, min: 0, max: 100 });
   const goalInvalid = !!(vTarget.error || vReturn.error);
   const addGoal = useApiMutation({
-    mutationFn: () => api("/api/goals", { method: "POST", body: { ...g, target_amount: vTarget.value,
+    mutationFn: () => api("/api/goals", { method: "POST", body: { ...g, target_amount: vTarget.value, priority: Number(g.priority) || 100,
       target_date: g.target_date || null, expected_return_aa: (vReturn.value ?? 0) / 100 } }),
     successMessage: "Meta criada", invalidate: [["planning"]],
     onSuccess: () => setG({ ...g, name: "", target_amount: "" }),
@@ -169,28 +171,28 @@ export default function Planning() {
         </Panel>
       </div>
 
-      <Panel title="Metas" hint={`aporte necessário e simulação de 4.000 cenários com aporte de ${brl(d.aporte_simulacao, 0)}/mês e o risco da carteira`}>
-        {d.goals.map((x: any) => (
-          <div key={x.id} className="list-row" style={{ flexWrap: "wrap" }}>
-            <div className="grow"><div className="t">{x.name}</div>
-              <div className="s">{brl(x.current, 0)} de {brl(x.target_amount, 0)}{x.target_date ? `, até ${date(x.target_date)}` : ""}; retorno esperado {pct(x.expected_return_aa, 0)} a.a.</div>
-              <div className="bar" style={{ marginTop: 6, maxWidth: 420 }}><i style={{ width: `${Math.min(100, (x.progress ?? 0) * 100)}%` }} /></div></div>
-            <div style={{ textAlign: "right" }}><div className="num strong">{x.monthly_needed !== null ? `${brl(x.monthly_needed, 0)}/mês` : "—"}</div>
-              <div className="small muted">{x.months_left ? `${x.months_left} meses` : ""}</div></div>
-            <button className="btn ghost sm danger" onClick={() => setGoalToDelete(x)} aria-label="Remover meta"><Trash2 size={14} /></button>
-            {x.simulacao && <GoalSim g={x} />}
-          </div>))}
+      <Panel title="Metas" hint="cada meta mede o próprio bolso; o aporte do mês vai para elas por prioridade e prazo (simulação de 4.000 cenários com o aporte que cada uma recebe)">
+        {d.plano_aportes && d.plano_aportes.falta_para_metas > 0 && <div className="callout" style={{ marginBottom: 10 }}><div className="grow">
+          O aporte de {brl(d.plano_aportes.aporte, 0)}/mês não cobre todas as metas: faltam {brl(d.plano_aportes.falta_para_metas, 0)}/mês
+          (soma dos necessários: {brl(d.plano_aportes.soma_necessaria_metas, 0)}). Aumente o aporte, estenda um prazo ou reduza uma meta.</div></div>}
+        {d.goals.map((x: any) => <GoalRow key={x.id} x={x} onDelete={() => setGoalToDelete(x)} />)}
         <div className="toolbar" style={{ marginTop: 12 }}>
           <input className="input" placeholder="Nome da meta" value={g.name} onChange={(e) => setG({ ...g, name: e.target.value })} />
+          <select className="select" value={g.kind} onChange={(e) => setG({ ...g, kind: e.target.value })} aria-label="Tipo de meta">
+            <option value="prazo">com prazo</option><option value="aposentadoria">aposentadoria / independência</option><option value="livre">acúmulo livre</option></select>
           <MoneyInput width={130} allowNegative={false} placeholder="Valor alvo" ariaLabel="Valor alvo" value={g.target_amount} onChange={(v) => setG({ ...g, target_amount: v })} />
-          <input className="input" type="date" value={g.target_date} onChange={(e) => setG({ ...g, target_date: e.target.value })} />
-          <select className="select" value={g.basis} onChange={(e) => setG({ ...g, basis: e.target.value })}>
-            <option value="investments">medir pelos investimentos</option><option value="net_worth">medir pelo patrimônio líquido</option></select>
-          <NumberInput width={80} min={0} max={100} ariaLabel="Retorno esperado % a.a." value={g.expected_return_aa} onChange={(v) => setG({ ...g, expected_return_aa: v })} />
+          {g.kind === "aposentadoria" && d.sugestao_independencia?.valor && <button className="btn sm ghost" title={`gasto anual de ${brl(d.sugestao_independencia.gasto_anual, 0)} ÷ ${pct(d.sugestao_independencia.taxa_retirada, 0)} de retirada ao ano`}
+            onClick={() => setG({ ...g, target_amount: formatInputNumber(Math.round(d.sugestao_independencia.valor)) })}>usar {brl(d.sugestao_independencia.valor, 0)}</button>}
+          <input className="input" type="date" value={g.target_date} onChange={(e) => setG({ ...g, target_date: e.target.value })} aria-label="Prazo" />
+          <NumberInput width={64} min={1} max={999} ariaLabel="Prioridade (menor vem primeiro)" value={g.priority} onChange={(v) => setG({ ...g, priority: v })} />
+          <span className="soft small">prioridade</span>
+          <NumberInput width={70} min={0} max={100} ariaLabel="Retorno esperado % a.a." value={g.expected_return_aa} onChange={(v) => setG({ ...g, expected_return_aa: v })} />
           <span className="soft small">% a.a.</span>
           <button className="btn primary" disabled={!g.name || goalInvalid || addGoal.isPending} onClick={() => addGoal.mutate()}>Criar meta</button>
         </div>
+        <p className="note">A meta ganha um bolso: separe nele o dinheiro em <a href="#" onClick={(e) => { e.preventDefault(); nav("/patrimonio"); }}>Patrimônio e bolsos</a>.</p>
       </Panel>
+      <ContributionsPanel a={d.aportes_realizados} />
     </>
   );
 }
@@ -253,5 +255,63 @@ function CalendarioFiscal({ c }: { c: any }) {
         <div key={`${f.titulo}-${f.data}`} className="small">{prettyName(f.titulo)}{f.instituicao ? ` (${f.instituicao})` : ""}: em {f.dias} {f.dias === 1 ? "dia" : "dias"} ({date(f.data)}) o IR cai de {pct(f.de, 1)} para {pct(f.para, 1)}. Se precisar resgatar, vale esperar.</div>))}
       {c.come_cotas && <div className="small">Próximo come-cotas dos fundos: {date(c.come_cotas)}.</div>}
     </div>
+  );
+}
+
+const STATUS_TONE: Record<string, "green" | "ochre" | "red" | undefined> = { "no ritmo": "green", "concluída": "green", "atrasada": "red", "medida antiga": "ochre" };
+
+function GoalRow({ x, onDelete }: { x: any; onDelete: () => void }) {
+  const [edit, setEdit] = useState(false);
+  const [f, setF] = useState({ target_amount: formatInputNumber(x.target_amount), target_date: x.target_date ?? "", priority: String(x.priority ?? 100) });
+  const save = useApiMutation({
+    mutationFn: (body: any) => api(`/api/goals/${x.id}`, { method: "PATCH", body }),
+    successMessage: "Meta atualizada", invalidate: "all", onSuccess: () => setEdit(false),
+  });
+  return (
+    <div className="list-row" style={{ flexWrap: "wrap" }}>
+      <div className="grow">
+        <div className="t">{x.name} <span className="soft small">· {x.kind_label} · prioridade {x.priority}</span> {x.status && <Chip tone={STATUS_TONE[x.status]}>{x.status}</Chip>}</div>
+        <div className="s">{brl(x.current, 0)} de {brl(x.target_amount, 0)}{x.target_date ? `, até ${date(x.target_date)}` : ""}; retorno esperado {pct(x.expected_return_aa, 0)} a.a.</div>
+        <div className="bar" style={{ marginTop: 6, maxWidth: 420 }}><i style={{ width: `${Math.min(100, (x.progress ?? 0) * 100)}%` }} /></div>
+        {x.avisos?.map((a: string) => <div key={a} className="note" style={{ whiteSpace: "normal", marginTop: 4 }}>⚠ {a}</div>)}
+      </div>
+      <div style={{ textAlign: "right" }}>
+        <div className="num strong">{x.monthly_needed != null ? `${brl(x.monthly_needed, 0)}/mês necessário` : "—"}</div>
+        {x.aporte_alocado != null && <div className="small">{brl(x.aporte_alocado, 0)}/mês no plano{x.falta_aporte > 0 ? ` (faltam ${brl(x.falta_aporte, 0)})` : ""}</div>}
+        <div className="small muted">{x.months_left ? `${x.months_left} meses` : ""}</div>
+      </div>
+      <button className="btn ghost sm" onClick={() => setEdit(!edit)}>{edit ? "Fechar" : "Editar"}</button>
+      <button className="btn ghost sm danger" onClick={onDelete} aria-label="Remover meta"><Trash2 size={14} /></button>
+      {edit && <div className="toolbar" style={{ flexBasis: "100%", marginTop: 6 }}>
+        <MoneyInput width={130} allowNegative={false} ariaLabel="Valor alvo" value={f.target_amount} onChange={(v) => setF({ ...f, target_amount: v })} />
+        <input className="input" type="date" value={f.target_date} onChange={(e) => setF({ ...f, target_date: e.target.value })} aria-label="Prazo" />
+        <NumberInput width={64} min={1} max={999} ariaLabel="Prioridade" value={f.priority} onChange={(v) => setF({ ...f, priority: v })} />
+        {x.legacy && <button className="btn sm" onClick={() => save.mutate({ basis: "bucket" })}>Converter para bolso</button>}
+        <button className="btn primary sm" disabled={save.isPending} onClick={() => save.mutate({ target_amount: parseBRL(f.target_amount) ?? x.target_amount,
+          target_date: f.target_date || null, priority: Number(f.priority) || 100 })}>Salvar</button>
+      </div>}
+      {x.simulacao && <GoalSim g={x} />}
+    </div>
+  );
+}
+
+function ContributionsPanel({ a }: { a: any }) {
+  if (!a) return null;
+  return (
+    <Panel title="Aportes: planejado × realizado" hint={a.nota}>
+      <Chart height={200} option={{
+        tooltip: { trigger: "axis", valueFormatter: (v: number) => brl(v, 0) },
+        xAxis: { type: "category", data: a.meses.map((m: any) => monthLabel(m.mes)) },
+        yAxis: { type: "value", axisLabel: { formatter: kTick } },
+        series: [
+          { name: "Realizado", type: "bar", data: a.meses.map((m: any) => ({ value: Math.round(m.realizado),
+            itemStyle: { color: m.cumprido ? cssVar("--ledger") : cssVar("--ochre") } })) },
+          ...(a.meses[0]?.meta ? [{ name: "Meta", type: "line", symbol: "none", data: a.meses.map((m: any) => Math.round(m.meta)),
+            lineStyle: { type: "dashed", color: cssVar("--ink") } }] : []),
+        ],
+      }} />
+      <p className="small">{a.sequencia > 0 ? `${a.sequencia} ${a.sequencia === 1 ? "mês seguido" : "meses seguidos"} com a meta de aporte cumprida.` : "Nenhum mês recente com a meta cumprida: o plano de aportes acima mostra para onde direcionar."}
+        {" "}Este mês: {brl(a.mes_atual.realizado, 0)}{a.mes_atual.meta ? ` de ${brl(a.mes_atual.meta, 0)}` : ""}.</p>
+    </Panel>
   );
 }

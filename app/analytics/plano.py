@@ -188,7 +188,9 @@ def reserve_status(s: Session, pos: dict, minimo_meses: float) -> dict:
     d = dre(s, hist, with_valuation=False)
     ess = [-v for v in next(r for r in d["rows"] if r["key"] == "essenciais")["values"].values() if v]
     ess_med = statistics.mean(ess) if ess else 0.0
-    liquido = reserva_liquida(s, pos)
+    from app.analytics.bolsos import bucket_values
+    in_bucket = bucket_values(s, pos)["reserve"]  # bolso da reserva, quando você separou o dinheiro
+    liquido = in_bucket if in_bucket is not None else reserva_liquida(s, pos)
     meses = liquido / ess_med if ess_med > 0 else None
     steps = [x for x in RESERVE_STEPS if x[1] < minimo_meses] + [("Meta do plano", float(minimo_meses))]
     degraus = [{"nome": nome, "meses": m, "valor": round(m * ess_med, 2), "atingido": liquido >= m * ess_med,
@@ -196,7 +198,8 @@ def reserve_status(s: Session, pos: dict, minimo_meses: float) -> dict:
     atual = next((g for g in degraus if not g["atingido"]), None)
     return {"liquido_d0_d1": round(liquido, 2), "custo_essencial_mensal": round(ess_med, 2), "meses": meses,
             "minimo_meses": minimo_meses, "ok": meses is None or meses >= minimo_meses, "degraus": degraus,
-            "proximo_degrau": atual, "abaixo_do_colchao": bool(ess_med > 0 and degraus and not degraus[0]["atingido"])}
+            "proximo_degrau": atual, "abaixo_do_colchao": bool(ess_med > 0 and degraus and not degraus[0]["atingido"]),
+            "fonte": "bolso" if in_bucket is not None else "liquidez"}
 
 
 def aporte_direcionado(classes: list[dict], total: float, aporte: float, reserva: dict) -> list[dict]:

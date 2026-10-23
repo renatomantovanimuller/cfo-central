@@ -361,3 +361,12 @@ a.btn.primary { color: #fff; }
 .health-score .big { font-size: 40px; font-weight: 720; line-height: 1; }
 .health-pillars { display: grid; gap: 4px; }
 @media (max-width: 640px) { .health { grid-template-columns: 1fr; } }
+
+/* bolsos como slots de inventário */
+.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; padding: 14px 18px; }
+.slot { display: grid; gap: 6px; align-content: start; padding: 12px; border: 1px solid var(--rule); border-radius: var(--r-md);
+  background: var(--paper); }
+.slot.on { border-color: var(--ledger); box-shadow: 0 0 0 1px var(--ledger) inset; }
+.slot.free { border-style: dashed; }
+.slot-head { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
+.slot .btn { justify-self: start; }

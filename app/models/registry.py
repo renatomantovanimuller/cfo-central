@@ -155,7 +155,32 @@ class FinancialGoal(Base):
     manual_current: Mapped[float | None] = mapped_column(Float)
     expected_return_aa: Mapped[float] = mapped_column(Float, default=0.10)
     notes: Mapped[str | None] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(String(20), default="prazo")  # prazo | aposentadoria | livre
+    priority: Mapped[int] = mapped_column(Integer, default=100)     # menor = recebe o aporte antes
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Bucket(Base):
+    """Bolso: finalidade do dinheiro (reserva, objetivo, aposentadoria). O que não está em bolso nenhum é "livre"."""
+    __tablename__ = "buckets"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(20), default="objetivo")  # reserva | objetivo | aposentadoria
+    goal_id: Mapped[int | None] = mapped_column(ForeignKey("financial_goals.id", ondelete="CASCADE"), unique=True)
+    color: Mapped[str | None] = mapped_column(String(20))
+    sort: Mapped[int] = mapped_column(Integer, default=100)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class BucketAllocation(Base):
+    """Parte (fração 0–1) de uma conta, investimento ou ativo manual separada para um bolso."""
+    __tablename__ = "bucket_allocations"
+    __table_args__ = (UniqueConstraint("bucket_id", "source_type", "source_id"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bucket_id: Mapped[int] = mapped_column(ForeignKey("buckets.id", ondelete="CASCADE"), index=True)
+    source_type: Mapped[str] = mapped_column(String(12))  # account | investment | manual
+    source_id: Mapped[str] = mapped_column(String(64))
+    pct: Mapped[float] = mapped_column(Float, default=1.0)
 
 
 class ManualAsset(Base):
@@ -169,6 +194,18 @@ class ManualAsset(Base):
     as_of: Mapped[date] = mapped_column(Date)
     notes: Mapped[str | None] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    acquired_at: Mapped[date | None] = mapped_column(Date)       # antes disso o item não entra no patrimônio
+    growth_aa: Mapped[float | None] = mapped_column(Float)       # atualização anual (índice; negativo = depreciação)
+
+
+class ManualAssetValue(Base):
+    """Histórico de valores de um item manual (cada atualização vira um ponto)."""
+    __tablename__ = "manual_asset_values"
+    __table_args__ = (UniqueConstraint("manual_asset_id", "date"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    manual_asset_id: Mapped[int] = mapped_column(ForeignKey("manual_assets.id", ondelete="CASCADE"), index=True)
+    date: Mapped[date] = mapped_column(Date)
+    value: Mapped[float] = mapped_column(Float)
 
 
 class AccountSetting(Base):

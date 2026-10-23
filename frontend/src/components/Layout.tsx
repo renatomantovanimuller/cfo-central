@@ -6,8 +6,7 @@ import { reviewSummary } from "./reviewBadge";
 import { useOnboarding } from "../hooks/useOnboarding";
 import {
   ArrowLeftRight, BookOpen, ClipboardList, CalendarRange, ChevronLeft, ChevronRight, CreditCard, Download, Eye, EyeOff, FileSpreadsheet, Gauge,
-  Inbox, Landmark, Layers, LineChart, ListTree, LogOut, Menu, PlugZap, Receipt, RefreshCw, Scale, Settings2, ShieldCheck, Store, Wand2, X,
-} from "lucide-react";
+  Inbox, Landmark, Layers, LineChart, ListTree, LogOut, Menu, PlugZap, Receipt, RefreshCw, Scale, Settings2, ShieldCheck, Store, Wallet, Wand2, X } from "lucide-react";
 import { api } from "../api";
 import { addMonth, dateTime, monthLabel, monthLong, thisMonth } from "../format";
 import { useToast } from "./ui";
@@ -35,6 +34,7 @@ const NAV: { group: string; items: { to: string; label: string; icon: any; badge
     { to: "/categorias", label: "Categorias e orçamento", icon: ListTree },
     { to: "/comerciantes", label: "Comerciantes", icon: Store }, { to: "/regras", label: "Regras", icon: Wand2 } ] },
   { group: "Patrimônio", items: [
+    { to: "/patrimonio", label: "Patrimônio e bolsos", icon: Wallet, hint: "Onde está cada real, bolsos, de onde veio a variação e projeção" },
     { to: "/carteira", label: "Carteira", icon: LineChart }, { to: "/cartoes", label: "Cartões", icon: CreditCard },
     { to: "/planejamento", label: "Planejamento", icon: CalendarRange }, { to: "/imposto-de-renda", label: "Imposto de renda", icon: Receipt } ] },
   { group: "Sistema", items: [
@@ -44,10 +44,10 @@ const NAV: { group: string; items: { to: string; label: string; icon: any; badge
 const TITLES: Record<string, string> = {
   "/": "Painel", "/dre": "Resultado do mês (DRE)", "/dre-gerencial": "Resultado gerencial", "/dfc": "Fluxo de caixa", "/balanco": "Balanço patrimonial",
   "/razao": "Lançamentos", "/categorias": "Categorias e orçamento", "/comerciantes": "Comerciantes", "/regras": "Regras de classificação",
-  "/revisao": "Revisão", "/carteira": "Carteira", "/cartoes": "Cartões", "/planejamento": "Planejamento",
+  "/revisao": "Revisão", "/patrimonio": "Patrimônio e bolsos", "/carteira": "Carteira", "/cartoes": "Cartões", "/planejamento": "Planejamento",
   "/conexoes": "Conexões", "/config": "Configurações", "/saude": "Saúde dos dados", "/imposto-de-renda": "Imposto de renda",
 };
-const MONTHLESS = new Set(["/balanco", "/regras", "/revisao", "/carteira", "/cartoes", "/planejamento", "/conexoes", "/config", "/comerciantes", "/saude", "/imposto-de-renda"]);
+const MONTHLESS = new Set(["/patrimonio", "/balanco", "/regras", "/revisao", "/carteira", "/cartoes", "/planejamento", "/conexoes", "/config", "/comerciantes", "/saude", "/imposto-de-renda"]);
 
 export function Layout() {
   const { month, setMonth } = useMonth();

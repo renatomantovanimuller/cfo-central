@@ -149,13 +149,17 @@ def current_position(s: Session) -> dict:
         assumptions.append(f"Baixa/perda explícita de investimentos: R$ {transit['writeoffs']:,.2f}.")
     loans = [{"id": l.id, "name": l.product_name or l.type, "outstanding": l.outstanding or 0.0}
              for l in s.scalars(select(Loan).where(Loan.removed_at.is_(None)))]
+    from app.accounting.manual import points_by_asset, value_at
     manual = list(s.scalars(select(ManualAsset).where(ManualAsset.active.is_(True))))
-    m_assets = [{"id": m.id, "name": m.name, "class": m.asset_class, "value": m.value, "as_of": m.as_of}
-                for m in manual if m.kind == "asset"]
-    m_liab = [{"id": m.id, "name": m.name, "class": m.asset_class, "value": m.value, "as_of": m.as_of}
-              for m in manual if m.kind == "liability"]
+    pts = points_by_asset(s)
+    today = today_brt()
+    m_rows = [{"id": m.id, "name": m.name, "class": m.asset_class, "value": round(value_at(m, pts.get(m.id), today), 2),
+               "as_of": m.as_of, "growth_aa": m.growth_aa, "kind": m.kind} for m in manual]
+    m_assets = [r for r in m_rows if r["kind"] == "asset"]
+    m_liab = [r for r in m_rows if r["kind"] == "liability"]
     if manual:
-        assumptions.append("Itens manuais valem pelo último valor informado (data em 'as_of').")
+        assumptions.append("Itens manuais valem pelo último valor informado, atualizado pela taxa anual quando "
+                           "definida (índice do imóvel, depreciação do veículo).")
     totals = {
         "cash": sum(c["balance"] for c in cash), "investments": sum(by_class.values()),
         "manual_assets": sum(m["value"] for m in m_assets), "in_transit": transit["in_transit"],
@@ -199,6 +203,7 @@ def snapshot_net_worth(s: Session) -> dict:
 def history(s: Session, months: int = 12) -> list[dict]:
     """Balanço em cada fim de mês. Usa snapshot quando existe; senão reconstrói (marcado como inferido):
     contas e cartões: saldo(d) = saldo_atual − Σ fluxos após d; investimentos: reconstrução por proxy."""
+    from app.accounting.manual import manual_net_at
     from app.portfolio.service import reconstruct_history
 
     today = today_brt()
@@ -241,8 +246,8 @@ def history(s: Session, months: int = 12) -> list[dict]:
         cards = max(0.0, cur["card_current"] + card_after)  # saldo do cartão (negativo = dívida) recuado
         inv = float(inv_hist.get(d, inv_hist.iloc[0] if len(inv_hist) else cur["investments"])) \
             if len(inv_hist) else cur["investments"]
-        nw = cash + inv + cur["manual_assets"] - cards - cur["loans"] - cur["manual_liabilities"]
+        manual = manual_net_at(s, d)  # valor vigente na data (zero antes de o item existir), não o de hoje
+        nw = cash + inv + manual - cards - cur["loans"]
         out.append({"date": d.isoformat(), "cash": cash, "investments": inv, "cards": cards, "card_future": None,
-                    "loans": cur["loans"], "manual": cur["manual_assets"] - cur["manual_liabilities"],
-                    "net_worth": nw, "inferred": True, "month": ym})
+                    "loans": cur["loans"], "manual": manual, "net_worth": nw, "inferred": True, "month": ym})
     return out

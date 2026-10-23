@@ -10,7 +10,7 @@ import { api } from "../api";
 import { Chip, Money, Panel, useToast } from "../components/ui";
 import { EmailForm, PluggyForm } from "../components/Integrations";
 import { DEMO } from "../demo";
-import { date, dateTime } from "../format";
+import { brl, date, dateTime, parseBRL, pct } from "../format";
 
 const CLASSES = ["RF Pós", "RF Pré", "RF IPCA+", "Tesouro Selic", "Tesouro Prefixado", "Tesouro IPCA+", "ETF Renda Fixa",
   "Ações BR", "ETF Ações BR", "FIIs", "ETF Internacional", "Fundos", "Previdência", "Cripto", "COE", "Outros"];
@@ -19,14 +19,17 @@ export default function SettingsPage() {
   const conns = useQuery({ queryKey: ["connections"], queryFn: () => api<any>("/api/connections") });
   const assets = useQuery({ queryKey: ["assets"], queryFn: () => api<any[]>("/api/assets") });
   const manual = useQuery({ queryKey: ["manual"], queryFn: () => api<any[]>("/api/manual-assets") });
-  const [m, setM] = useState({ kind: "asset", name: "", asset_class: "", value: "" });
+  const [m, setM] = useState({ kind: "asset", name: "", asset_class: "", value: "", acquired_at: "", growth: "" });
   const saveAcc = (id: number, body: any) => api(`/api/accounts/${id}`, { method: "PATCH", body });
   const saveAsset = (id: number, body: any) => api(`/api/assets/${id}`, { method: "PATCH", body });
   const ASSET_MSG = "Ativo atualizado. Rode “Atualizar cotações” em Conexões se trocou o ticker";
   const vValue = validateNumber(m.value, { required: true, allowNegative: false });
   const [assetToDelete, setAssetToDelete] = useState<any>(null);
-  const addManual = useApiMutation({ mutationFn: () => api("/api/manual-assets", { method: "POST", body: { ...m, value: vValue.value } }),
-    successMessage: "Item salvo no balanço", invalidate: "all", onSuccess: () => setM({ ...m, name: "", value: "" }) });
+  const vGrowth = validateNumber(m.growth, { min: -50, max: 50 });
+  const addManual = useApiMutation({ mutationFn: () => api("/api/manual-assets", { method: "POST", body: { kind: m.kind, name: m.name,
+      asset_class: m.asset_class || null, value: vValue.value, acquired_at: m.acquired_at || null,
+      growth_aa: vGrowth.value === null ? null : vGrowth.value / 100 } }),
+    successMessage: "Item salvo no balanço", invalidate: "all", onSuccess: () => setM({ ...m, name: "", value: "", acquired_at: "", growth: "" }) });
   const delManual = useApiMutation({ mutationFn: (id: number) => api(`/api/manual-assets/${id}`, { method: "DELETE" }), invalidate: "all", successMessage: "Item removido" });
   const alerts = useQuery({ queryKey: ["alerts"], queryFn: () => api<any>("/api/alerts/status") });
   const toast = useToast();
@@ -84,18 +87,17 @@ export default function SettingsPage() {
               <td>{a.origin === "user" && <Chip tone="green">ajustado</Chip>}</td></tr>))}</tbody></table></div>
       </Panel>
       <Panel title="Ativos e passivos fora do Open Finance" hint="imóvel, veículo, conta não conectada, dívida informal">
-        {(manual.data ?? []).map((x) => (
-          <div key={x.id} className="list-row"><Chip tone={x.kind === "asset" ? "green" : "red"}>{x.kind === "asset" ? "ativo" : "passivo"}</Chip>
-            <div className="grow"><div className="t">{x.name}</div><div className="s">{x.asset_class ?? ""} em {date(x.as_of)}</div></div>
-            <Money v={x.kind === "asset" ? x.value : -x.value} />
-            <button className="btn ghost sm danger" onClick={() => setAssetToDelete(x)} aria-label="Remover"><Trash2 size={14} /></button></div>))}
+        {(manual.data ?? []).map((x) => <ManualRow key={x.id} x={x} onDelete={() => setAssetToDelete(x)} />)}
         <div className="toolbar" style={{ marginTop: 10 }}>
           <select className="select" value={m.kind} onChange={(e) => setM({ ...m, kind: e.target.value })}><option value="asset">Ativo</option><option value="liability">Passivo</option></select>
           <input className="input" placeholder="Nome" value={m.name} onChange={(e) => setM({ ...m, name: e.target.value })} />
           <input className="input" placeholder="Classe (opcional)" value={m.asset_class} onChange={(e) => setM({ ...m, asset_class: e.target.value })} />
           <MoneyInput width={130} placeholder="Valor" ariaLabel="Valor" allowNegative={false} value={m.value} onChange={(v) => setM({ ...m, value: v })} />
-          <button className="btn primary" disabled={!m.name || !!vValue.error || addManual.isPending} onClick={() => addManual.mutate()}>Adicionar</button>
+          <input className="input" type="date" value={m.acquired_at} onChange={(e) => setM({ ...m, acquired_at: e.target.value })} aria-label="Data de aquisição" title="Data de aquisição (antes dela o item não entra no patrimônio)" />
+          <NumberInput width={72} min={-50} max={50} placeholder="% a.a." ariaLabel="Atualização anual em %" value={m.growth} onChange={(v) => setM({ ...m, growth: v })} />
+          <button className="btn primary" disabled={!m.name || !!vValue.error || !!vGrowth.error || addManual.isPending} onClick={() => addManual.mutate()}>Adicionar</button>
         </div>
+        <p className="note">Data de aquisição: antes dela o item não entra no histórico do patrimônio. % a.a.: valorização (imóvel, ex.: 5) ou depreciação (veículo, ex.: −10) aplicada entre as atualizações.</p>
       </Panel>
       {!DEMO && <Panel title="Exportação">
         <div className="toolbar">
@@ -105,5 +107,25 @@ export default function SettingsPage() {
         <p className="note">O Excel é bom para puxar na sua planilha via Power Query (Dados &gt; Obter dados &gt; De arquivo).</p>
       </Panel>}
     </>
+  );
+}
+
+function ManualRow({ x, onDelete }: { x: any; onDelete: () => void }) {
+  const [v, setV] = useState("");
+  const upd = useApiMutation({
+    mutationFn: (value: number) => api(`/api/manual-assets/${x.id}`, { method: "PUT", body: { kind: x.kind, name: x.name, asset_class: x.asset_class,
+      value, as_of: null, notes: x.notes, active: x.active, acquired_at: x.acquired_at, growth_aa: x.growth_aa } }),
+    successMessage: "Valor atualizado (o anterior fica no histórico)", invalidate: "all", onSuccess: () => setV(""),
+  });
+  const parsed = parseBRL(v);
+  return (
+    <div className="list-row" style={{ flexWrap: "wrap" }}><Chip tone={x.kind === "asset" ? "green" : "red"}>{x.kind === "asset" ? "ativo" : "passivo"}</Chip>
+      <div className="grow"><div className="t">{x.name}</div>
+        <div className="s">{[x.asset_class, `informado ${brl(x.value, 0)} em ${date(x.as_of)}`, x.acquired_at && `adquirido em ${date(x.acquired_at)}`,
+          x.growth_aa ? `${x.growth_aa > 0 ? "+" : ""}${pct(x.growth_aa, 1)} a.a.` : null, x.historico?.length > 1 && `${x.historico.length} atualizações`].filter(Boolean).join(" · ")}</div></div>
+      <Money v={x.kind === "asset" ? (x.valor_atual ?? x.value) : -(x.valor_atual ?? x.value)} />
+      <MoneyInput width={120} allowNegative={false} placeholder="novo valor" ariaLabel={`Novo valor de ${x.name}`} value={v} onChange={setV} />
+      <button className="btn sm" disabled={!parsed || upd.isPending} onClick={() => parsed && upd.mutate(parsed)}>Atualizar</button>
+      <button className="btn ghost sm danger" onClick={onDelete} aria-label="Remover"><Trash2 size={14} /></button></div>
   );
 }

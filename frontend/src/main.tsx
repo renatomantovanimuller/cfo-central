@@ -25,6 +25,7 @@ import Connections from "./pages/Connections";
 import SettingsPage from "./pages/Settings";
 import SaudeDados from "./pages/SaudeDados";
 import ImpostoRenda from "./pages/ImpostoRenda";
+import Patrimony from "./pages/Patrimony";
 
 const qc = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1, staleTime: 15_000 } } });
 
@@ -89,6 +90,7 @@ function Gate() {
           <Route path="comerciantes" element={<Merchants />} />
           <Route path="regras" element={<Rules />} />
           <Route path="revisao" element={<Reviews />} />
+          <Route path="patrimonio" element={<Patrimony />} />
           <Route path="carteira" element={<Portfolio />} />
           <Route path="cartoes" element={<Cards />} />
           <Route path="planejamento" element={<Planning />} />
