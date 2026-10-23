@@ -27,10 +27,26 @@ def future_installments(s: Session) -> dict:
         cur = latest.get(r.installment_key)
         if cur is None or (r.installment_number or 0) > (cur.installment_number or 0):
             latest[r.installment_key] = r
+    # a 1ª parcela costuma ter centavos de arredondamento diferentes e cai noutra chave: chaves da mesma compra
+    # (cartão|comerciante|nº de parcelas) com valores a até R$ 1/2% são o mesmo plano, vale a parcela mais recente
+    same_purchase: dict[str, list] = defaultdict(list)
+    for k, r in latest.items():
+        same_purchase[k.rsplit("|", 1)[0]].append(r)
+    plans_latest = []
+    for rs in same_purchase.values():
+        rs.sort(key=lambda r: abs(r.amount))
+        cluster = [rs[0]]
+        for r in rs[1:]:
+            if abs(abs(r.amount) - abs(cluster[-1].amount)) <= max(1.0, 0.02 * abs(r.amount)):
+                cluster.append(r)
+            else:
+                plans_latest.append(max(cluster, key=lambda x: x.installment_number or 0))
+                cluster = [r]
+        plans_latest.append(max(cluster, key=lambda x: x.installment_number or 0))
     today_m = month_key(today_brt())
     by_month: dict[str, float] = defaultdict(float)
     plans = []
-    for r in latest.values():
+    for r in plans_latest:
         remaining = (r.total_installments or 0) - (r.installment_number or 0)
         if remaining <= 0:
             continue
@@ -184,9 +200,12 @@ def history(s: Session, months: int = 12) -> list[dict]:
     today = today_brt()
     snaps = {r.date: r for r in s.scalars(select(DailyNetWorth))}
     cur = current_position(s)["totals"]
+    # mesmo perímetro do saldo atual: sem contas removidas nem excluídas do patrimônio
+    outside = list(s.scalars(select(AccountSetting.account_id).where(AccountSetting.include_in_net_worth.is_(False))))
     flows = s.execute(select(Transaction.date, Account.type, func.sum(Transaction.flow))
                       .join(Account, Account.id == Transaction.account_id)
-                      .where(Transaction.removed_at.is_(None),
+                      .where(Transaction.removed_at.is_(None), Account.removed_at.is_(None),
+                             Account.id.not_in(outside or ["-"]),
                              Transaction.id.not_in(excluded_pending_ids(s)))
                       .group_by(Transaction.date, Account.type)).all()
     fdf = pd.DataFrame(flows, columns=["date", "type", "flow"]) if flows else pd.DataFrame(columns=["date", "type", "flow"])

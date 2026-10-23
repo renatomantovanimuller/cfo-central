@@ -179,8 +179,8 @@ PLUGGY_MAP: dict[str, tuple[str, float]] = {
     "19050001": ("transporte.combustivel", .85), "19050002": ("transporte.estacionamento", .9),
     "19050003": ("transporte.estacionamento", .9), "19050004": ("transporte.seguro_impostos", .9),
     "19050005": ("transporte.manutencao", .9), "19050006": ("findesp.multas", .9),
-    "20000000": ("servicos.seguros", .85), "200100000": ("servicos.seguros", .9), "200200000": ("servicos.seguros", .9),
-    "200300000": ("saude.plano", .9), "200400000": ("transporte.seguro_impostos", .9),
+    "20000000": ("servicos.seguros", .85), "20010000": ("servicos.seguros", .9), "20020000": ("servicos.seguros", .9),
+    "20030000": ("saude.plano", .9), "20040000": ("transporte.seguro_impostos", .9),
     "21000000": ("lazer.outros", .6),
     "99999999": ("nc", .2),
 }

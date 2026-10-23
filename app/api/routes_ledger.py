@@ -357,8 +357,16 @@ class CategoryBody(BaseModel):
     active: bool | None = None
 
 
+def _check_dre_line(line: str | None) -> None:
+    """Linha fora da DRE faria os lançamentos da categoria sumirem do demonstrativo sem aviso."""
+    from app.categorization.chart import DRE_LINES
+    if line is not None and line not in {k for k, _, _ in DRE_LINES}:
+        raise HTTPException(400, f"linha da DRE inválida: {line}")
+
+
 @router.post("/categories")
 def create_category(body: CategoryBody, db: Session = Depends(get_db)) -> dict:
+    _check_dre_line(body.dre_line)
     parent = db.get(Category, body.parent_id) if body.parent_id else None
     if body.parent_id and not parent:
         raise HTTPException(400, "categoria-mãe inexistente")
@@ -379,6 +387,7 @@ def patch_category(category_id: str, body: CategoryBody, db: Session = Depends(g
     c = db.get(Category, category_id)
     if not c:
         raise HTTPException(404)
+    _check_dre_line(body.dre_line)
     for k in ("name", "essential", "dre_line", "color", "active", "parent_id"):
         v = getattr(body, k)
         if v is not None:

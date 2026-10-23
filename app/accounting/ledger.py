@@ -18,10 +18,11 @@ from app.categorization.engine import (Decision, TxView, compile_rules, keyword_
                                        merchant_key)
 from app.categorization.text import counterparty_from_description, merchant_alias, norm
 from app.config.settings import get_settings
-from app.models import (Account, CardPaymentLink, Category, CategoryRule, CreditCardBill, EventOverride,
-                        EventType, FinancialEvent, IdentityRecord, InternalTransfer, LedgerAudit, Merchant,
-                        MerchantAlias, PluggyCategoryMap, Transaction)
-from app.reconciliation.matching import card_payments, installment_key, investment_flows, transfers
+from app.models import (Account, AccountSetting, CardPaymentLink, Category, CategoryRule, CreditCardBill,
+                        EventOverride, EventType, FinancialEvent, IdentityRecord, InternalTransfer, Item, LedgerAudit,
+                        Merchant, MerchantAlias, PluggyCategoryMap, Transaction)
+from app.reconciliation.matching import (card_payments, connected_card_issuers, installment_key, investment_flows,
+                                         transfers)
 from app.utils.time import today_brt, utcnow
 
 log = logging.getLogger(__name__)
@@ -143,8 +144,12 @@ def rebuild_ledger(s: Session, actor: str = "system", reason: str = "rebuild") -
     txs = load_tx_views(s)
     bills = [{"id": b.id, "account_id": b.account_id, "due_date": b.due_date, "total_amount": b.total_amount}
              for b in s.scalars(select(CreditCardBill))]
-    card_accounts = {a.id: a.item_id for a in s.scalars(select(Account).where(Account.type == "CREDIT",
-                                                                                 Account.removed_at.is_(None)))}
+    card_rows = list(s.scalars(select(Account).where(Account.type == "CREDIT", Account.removed_at.is_(None))))
+    card_accounts = {a.id: a.item_id for a in card_rows}
+    nick = {x.account_id: x.nickname for x in s.scalars(select(AccountSetting)) if x.nickname}
+    item_nick = {i.id: i.nickname for i in s.scalars(select(Item)) if i.nickname}
+    card_issuers = connected_card_issuers([" ".join(filter(None, (a.name, a.marketing_name, nick.get(a.id),
+                                                                  item_nick.get(a.item_id)))) for a in card_rows])
     bill_due = {b["id"]: b["due_date"] for b in bills}
     tx_bill = dict(s.execute(select(Transaction.id, Transaction.bill_id).where(Transaction.bill_id.is_not(None))).all())
 
@@ -158,7 +163,7 @@ def rebuild_ledger(s: Session, actor: str = "system", reason: str = "rebuild") -
                       review=["pending_stale"] if why != SUPERSEDED else [])
         for tid, why in dropped.items()}
     structural.update(investment_flows(txs_live))
-    cp, card_links = card_payments(txs_live, bills, card_accounts, skip=set(structural))
+    cp, card_links = card_payments(txs_live, bills, card_accounts, skip=set(structural), connected_issuers=card_issuers)
     structural.update(cp)
     tr, transfer_links = transfers(txs_live, own_docs, own_names, skip=set(structural))
     structural.update(tr)
@@ -345,6 +350,9 @@ def _decide(tx: TxView, o: EventOverride | None, rules, structural: dict[str, De
         # Pix/TED recebido classificado como "transferência a terceiros" → recebimento a classificar
         if cat_id.startswith("terceiros") and tx.flow > 0:
             cat_id, conf = "rec.pix_terceiros", 0.4
+        # crédito em "Empréstimos e financiamentos" é dinheiro emprestado entrando, não juros negativos nem receita
+        elif tx.flow > 0 and tx.pluggy_cat == "02000000":
+            cat_id = "pat.emprestimo_in"
         elif cat_id == "terceiros.pf" and tx.party_doc and len(tx.party_doc) == 14:
             cat_id = "terceiros.pj"
         # sinais mais específicos vencem empates: palavra-chave da marca > MCC do cartão > categoria da Pluggy

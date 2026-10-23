@@ -20,7 +20,7 @@ const EXIT_OPTIONS: [string, string][] = [
   ["provider_error", "Erro do provedor — manter posição"], ["loss", "Perda/baixa"],
 ];
 const QUICK: Record<string, [string, string, string | null][]> = {
-  pix_pf_out: [["Despesa (terceiros)", "terceiros.pf", null], ["Presente", "compras.presentes", null], ["Empréstimo a amigo", "pat.ignorar", "IGNORE"]],
+  pix_pf_out: [["Despesa (terceiros)", "terceiros.pf", null], ["Presente", "compras.presentes", null], ["Empréstimo a amigo", "pat.emprestimo_concedido", "IGNORE"]],
   pix_in_unknown: [["Salário/bolsa", "rec.salario", null], ["Reembolso de amigo", "terceiros.pf", "REFUND"], ["Presente recebido", "rec.presentes", null]],
   recurring_income: [["É salário/bolsa", "rec.salario", null], ["Freelance", "rec.freela", null]],
 };

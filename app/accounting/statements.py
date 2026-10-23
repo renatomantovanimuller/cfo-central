@@ -5,9 +5,10 @@ from collections import defaultdict
 from datetime import date
 
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.accounting.effective import STALE, SUPERSEDED
 from app.categorization.chart import DRE_LINES
 from app.models import Account, AccountBalance, Category, EventType, FinancialEvent
 from app.utils.time import month_add, month_bounds, month_key, today_brt
@@ -39,7 +40,9 @@ def _events_frame(s: Session, start: date, end: date, types: set[str] | None = N
     q = (select(FinancialEvent.source_id, FinancialEvent.amount, FinancialEvent.event_type,
                 FinancialEvent.category_id, col.label("d"), Account.type.label("acc_type"))
          .join(Account, Account.id == FinancialEvent.account_id)
-         .where(FinancialEvent.is_removed.is_(False), col >= start, col <= end))
+         .where(FinancialEvent.is_removed.is_(False), col >= start, col <= end,
+                # pendente duplicado (já efetivado com outro id) ou velho sem efetivação nunca foi dinheiro
+                or_(FinancialEvent.rule_id.is_(None), FinancialEvent.rule_id.not_in([SUPERSEDED, STALE]))))
     if types:
         q = q.where(FinancialEvent.event_type.in_(types))
     if bank_only:
@@ -175,7 +178,7 @@ DFC_LINES = [
 def dfc(s: Session, months: list[str]) -> dict:
     start, _ = month_bounds(months[0])
     _, end = month_bounds(months[-1])
-    df = _events_frame(s, start, end, bank_only=True)
+    df = _events_frame(s, start, end, bank_only=True, date_col="cash_date")
     # recebimentos e despesas separados por sentido
     sections = []
     total = {m: 0.0 for m in months}
@@ -195,7 +198,7 @@ def dfc(s: Session, months: list[str]) -> dict:
 
     # saldo de caixa (contas BANK): atual − fluxos posteriores = reconstrução; conferência contra snapshots reais
     cash_now = sum(a.balance or 0 for a in s.scalars(select(Account).where(Account.type == "BANK", Account.removed_at.is_(None))))
-    all_after = _events_frame(s, start, date(2100, 1, 1), bank_only=True)
+    all_after = _events_frame(s, start, date(2100, 1, 1), bank_only=True, date_col="cash_date")
     opening, closing, check = {}, {}, {}
     snaps = s.execute(select(AccountBalance.date, AccountBalance.balance).join(Account, Account.id == AccountBalance.account_id)
                       .where(Account.type == "BANK", AccountBalance.is_inferred.is_(False))).all()

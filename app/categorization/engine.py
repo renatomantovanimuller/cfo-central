@@ -153,10 +153,11 @@ KEYWORDS: list[tuple[str, str, float, str | None]] = [
     (r"darf|receita federal|imposto de renda|\birpf\b", "impostos.ir", .8, "out"),
     (r"\bipva\b|detran|licenciamento", "transporte.seguro_impostos", .85, "out"),
     (r"saque", "saques", .8, "out"),
+    # dividendos antes de "rendimento": "rendimento fii" é provento (isento no IR), não juros em conta
+    (r"dividendo|jcp|juros sobre capital|rendimento fii", "finrec.dividendos", .85, "in"),
     (r"salario|folha de pagamento|proventos|bolsa estagio|bolsa-auxilio|bolsa auxilio", "rec.salario", .8, "in"),
     (r"rendimento|remuneracao da conta|juros sobre saldo", "finrec.juros", .6, "in"),
     (r"cashback|recompensa", "finrec.cashback", .8, "in"),
-    (r"dividendo|jcp|juros sobre capital|rendimento fii", "finrec.dividendos", .85, "in"),
 ]
 _KW = [(re.compile(rx), cat, conf, d) for rx, cat, conf, d in KEYWORDS]
 

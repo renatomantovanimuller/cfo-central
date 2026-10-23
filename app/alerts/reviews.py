@@ -6,9 +6,10 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.accounting.effective import STALE, SUPERSEDED
 from app.models import Account, FinancialEvent, Institution, Item, ReviewItem
 from app.utils.time import today_brt, utcnow
 
@@ -115,7 +116,10 @@ def system_reviews(s: Session) -> list[ReviewCandidate]:
     # duplicidade: mesma conta, mesmo valor, mesma descrição, mesma data, ids diferentes
     dup = s.execute(select(FinancialEvent.account_id, FinancialEvent.competence_date, FinancialEvent.amount,
                            FinancialEvent.description, FinancialEvent.source_id)
-                    .where(FinancialEvent.is_removed.is_(False), FinancialEvent.competence_date >= since)).all()
+                    .where(FinancialEvent.is_removed.is_(False), FinancialEvent.competence_date >= since,
+                           # pendente gêmeo de um efetivado já foi descartado do razão: não é duplicidade
+                           or_(FinancialEvent.rule_id.is_(None),
+                               FinancialEvent.rule_id.not_in([SUPERSEDED, STALE])))).all()
     groups: dict[tuple, list[str]] = defaultdict(list)
     for r in dup:
         groups[(r.account_id, r.competence_date, round(r.amount, 2), (r.description or "").lower())].append(r.source_id)

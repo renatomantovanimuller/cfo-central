@@ -104,7 +104,7 @@ def safe_to_spend(s: Session, today: date | None = None) -> dict:
 # ------------------------------------------------------------------ política de investimentos
 def policy_report(s: Session) -> dict:
     from app.accounting.balance import current_position
-    from app.accounting.management import LIQUID
+    from app.accounting.management import reserva_liquida
     from app.portfolio.service import allocation, fgc_exposure
 
     p = plan(s)
@@ -132,7 +132,7 @@ def policy_report(s: Session) -> dict:
     d = dre(s, hist, with_valuation=False)
     ess = [-v for v in next(r for r in d["rows"] if r["key"] == "essenciais")["values"].values()]
     ess_med = statistics.mean(ess) if ess else 0.0
-    liquido = pos["totals"]["cash"] + sum(x["balance"] for x in positions if x.get("liquidity") in LIQUID)
+    liquido = reserva_liquida(s, pos)
     meses = liquido / ess_med if ess_med > 0 else None
     fgc = fgc_exposure(positions) if positions else []
     acima_fgc = [f for f in fgc if f["value"] > p["limite_fgc"]]

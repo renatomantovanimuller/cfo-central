@@ -19,6 +19,12 @@ CARD_ISSUER_ROOTS = {
     "90400888": "Santander", "00000000": "Banco do Brasil", "00360305": "Caixa", "31872495": "C6 Bank",
     "30306294": "BTG Pactual", "59285411": "Banco Pan",
 }
+# como o emissor aparece no nome/apelido do cartão conectado (para saber se o cartão daquele emissor está aqui)
+CARD_ISSUER_HINTS = {
+    "Inter": r"\binter\b", "Nubank": r"\bnu ?bank\b|\bnu pagamentos\b|\bultravioleta\b", "Itaú": r"\bitau",
+    "Bradesco": r"\bbradesco", "Santander": r"\bsantander", "Banco do Brasil": r"\bbanco do brasil\b|\bourocard\b",
+    "Caixa": r"\bcaixa\b", "C6 Bank": r"\bc6\b", "BTG Pactual": r"\bbtg\b", "Banco Pan": r"\bpan\b|\bbanco pan\b",
+}
 CARD_IN_RE = re.compile(r"pagamento (recebido|efetuado|obrigado)|pagto recebido|pagamento de fatura|pagamento fatura"
                         r"|pagamento on ?line|pag(to|amento) (por )?debito automatico")
 # gateways de pagamento: Pix para eles nunca e fatura de cartao sem evidencia real (credito/fatura casados)
@@ -84,9 +90,22 @@ def investment_flows(txs: list[TxView]) -> dict[str, Decision]:
 
 
 # ------------------------------------------------------------------ cartão
+def connected_card_issuers(card_texts: list[str]) -> set[str]:
+    """Emissores (rótulos de CARD_ISSUER_ROOTS) com cartão conectado, a partir de nome/apelido/instituição."""
+    out = set()
+    for text in card_texts:
+        t = norm(text)
+        out |= {label for label, rx in CARD_ISSUER_HINTS.items() if re.search(rx, t)}
+    return out
+
+
 def card_payments(txs: list[TxView], bills: list[dict], card_accounts: dict[str, str],
-                  skip: set[str]) -> tuple[dict[str, Decision], list[CardLink]]:
-    """card_accounts: {account_id: item_id} dos cartões conectados. bills: dicts com id, account_id, due_date, total_amount."""
+                  skip: set[str], connected_issuers: set[str] | None = None
+                  ) -> tuple[dict[str, Decision], list[CardLink]]:
+    """card_accounts: {account_id: item_id} dos cartões conectados. bills: dicts com id, account_id, due_date,
+    total_amount. connected_issuers: emissores com cartão conectado (pagamento ao CNPJ deles sem casamento não é
+    cartão externo)."""
+    connected_issuers = connected_issuers or set()
     decisions: dict[str, Decision] = {}
     links: list[CardLink] = []
     def issuer(t: TxView) -> str | None:
@@ -135,7 +154,8 @@ def card_payments(txs: list[TxView], bills: list[dict], card_accounts: dict[str,
             # sem fatura/credito casado, Pix a gateway e despesa provisoria para revisao
             decisions[p.id] = Decision("servicos.outros", "EXPENSE", "structural", "card:gateway_not_invoice", 0.35,
                                        review=["payment_gateway"])
-        elif card_accounts and not issuer(p):
+        elif card_accounts and (not issuer(p) or issuer(p) in connected_issuers):
+            # o cartão do emissor está conectado: as compras já estão lá; tratar como despesa contaria em dobro
             decisions[p.id] = Decision("pat.fatura", "CARD_PAYMENT", "structural", "card:unmatched", 0.7,
                                        review=["card_payment_unmatched"])
         else:

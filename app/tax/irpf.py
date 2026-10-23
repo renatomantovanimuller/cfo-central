@@ -109,12 +109,14 @@ def bens_e_direitos(s: Session, ano: int, pend: list[str]) -> list[dict]:
     out = []
     # contas
     for a in s.scalars(select(Account).where(Account.type == "BANK", Account.removed_at.is_(None))):
-        g, c, desc, _ = BENS["conta"]
+        savings = (a.subtype or "").upper() == "SAVINGS_ACCOUNT"
+        g, c, desc, _ = BENS["poupanca" if savings else "conta"]
+        kind = "poupança" if savings else "pagamento" if "pagamento" in norm(a.name) else "corrente"
         cur, src = _bal_at(s, AccountBalance, AccountBalance.account_id, a.id, ref, today, a.balance)
         before, src_prev = _bal_at(s, AccountBalance, AccountBalance.account_id, a.id, prev, today, None)
         cnpj = _cnpj_for(a.name) or _cnpj_for(a.marketing_name)
         out.append({"grupo": g, "codigo": c, "tipo": desc, "bem": nick.get(a.id) or a.name,
-                    "discriminacao": f"Saldo em conta {'pagamento' if 'pagamento' in norm(a.name) else 'corrente'} "
+                    "discriminacao": f"Saldo em conta {kind} "
                                      f"nº {a.number or '—'} no(a) {a.name}.",
                     "cnpj": cnpj, "situacao_anterior": before, "situacao_atual": cur, "origem": src,
                     "origem_anterior": src_prev, "obrigatorio": (cur or 0) > 140 or (before or 0) > 140})
