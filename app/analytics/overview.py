@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.accounting.balance import current_position, future_installments
-from app.accounting.statements import dre, month_list
+from app.accounting.statements import SPENDING_LINES, dre, month_list
 from app.models import (Account, Budget, Category, CreditCardBill, DailyNetWorth, EventType, FinancialEvent,
                         Merchant, RecurringRule, ReviewItem)
 from app.utils.time import month_add, month_bounds, month_key, today_brt
@@ -59,11 +59,11 @@ def kpis_from_dre(d: dict) -> dict:
     for m in d["months"]:
         rec = rows["receita_liquida"]["values"][m]
         res = rows["resultado_liquido"]["values"][m]
-        expenses = sum(rows[k]["values"][m] for k in ("essenciais", "estilo_vida", "terceiros", "nao_classificado",
-                                                      "despesas_financeiras"))
+        expenses = sum(rows[k]["values"][m] for k in SPENDING_LINES)
         out[m] = {"receita_liquida": rec, "despesas": -expenses, "essenciais": -rows["essenciais"]["values"][m],
                   "estilo_vida": -rows["estilo_vida"]["values"][m], "resultado": res,
                   "extraordinarios": rows["extraordinarios"]["values"][m],
+                  "a_classificar_entradas": rows["entradas_a_classificar"]["values"][m],
                   "resultado_total": rows["resultado_total"]["values"][m],
                   "taxa_poupanca": d["savings_rate"][m]}
     return out
@@ -319,7 +319,8 @@ def liquidity_forecast(s: Session, horizon: int = 6) -> dict:
     n = len(hist)
 
     income_mask = ((df["acc"] == "BANK") & df["et"].isin(["INCOME", "INVESTMENT_INCOME"]) & (df["amount"] > 0)
-                   & ~df["cat"].isin(EXTRAORDINARY_CATEGORIES) & (df["line"] != "extraordinarios")) if not df.empty else None
+                   & ~df["cat"].isin(EXTRAORDINARY_CATEGORIES)
+                   & ~df["line"].isin(["extraordinarios", "entradas_a_classificar"])) if not df.empty else None
     salary_months = _monthly_totals(df, income_mask & (df["cat"] == SALARY_CATEGORY), hist) if not df.empty else []
     other_months = _monthly_totals(df, income_mask & (df["cat"] != SALARY_CATEGORY), hist) if not df.empty else []
     last_salary = next((v for v in reversed(salary_months) if v > 0), 0.0)

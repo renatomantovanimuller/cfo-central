@@ -150,6 +150,10 @@ def card_payments(txs: list[TxView], bills: list[dict], card_accounts: dict[str,
             links.append(CardLink(p.id, bill["account_id"], None, bill["id"], "bill_amount",
                                   abs(abs(p.flow) - bill["total_amount"]), 0.9))
             decisions[p.id] = Decision("pat.fatura", "CARD_PAYMENT", "structural", "card:bill_match", 0.9)
+        elif not (p.pluggy_cat == "05100000" or FATURA_RE.search(p.text)):
+            # só o CNPJ do banco, sem categoria/descrição de fatura nem valor casado: pode ser seguro, consórcio,
+            # parcela de empréstimo do mesmo banco… fica com a categorização normal (comerciante, Pluggy, revisão)
+            continue
         elif is_gateway(p):
             # sem fatura/credito casado, Pix a gateway e despesa provisoria para revisao
             decisions[p.id] = Decision("servicos.outros", "EXPENSE", "structural", "card:gateway_not_invoice", 0.35,

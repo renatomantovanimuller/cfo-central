@@ -32,21 +32,19 @@ Testes: `tests/unit/test_tratamento_dados.py`.
 
 ## Backlog recomendado (não alterado)
 
-**Alta prioridade — distorcem os números principais**
+**Resolvidos na segunda rodada**
 
-1. **Entradas não classificadas contam como receita.** `rec.pix_terceiros` está em "Outras receitas": um amigo
-   devolvendo um racha infla receita líquida, taxa de poupança e a "renda prevista" do *Quanto posso gastar*.
-   Sugestão: linha própria "Entradas a classificar" fora da receita líquida até a decisão (simétrico ao
-   "A classificar" das despesas).
-2. **Regra por comerciante sem CNPJ não casa.** Resolver uma revisão agrupada com tipo explícito cria regra
-   `merchant equals canonical_name`, mas o nome canônico pode vir da descrição e o motor compara com o nome da
-   contraparte → o tipo (ex.: Reembolso) não vale para os lançamentos futuros. Sugestão: campo de regra `merchant_id`.
-3. **Pagamento ao CNPJ de banco que não é fatura** (seguro, consórcio, boleto de empréstimo do mesmo banco) entra
-   como fatura/cartão externo. Sugestão: só tratar como fatura com descrição compatível ou valor próximo de fatura.
+1. ~~Entradas não classificadas contam como receita~~ → linha **"Entradas a classificar"** fora da receita líquida
+   e do resultado recorrente (entra só no resultado total), fora da renda do *Quanto posso gastar* e da previsão
+   de liquidez; o Painel mostra o valor com atalho para a Revisão.
+2. ~~Regra por comerciante sem CNPJ não casa~~ → campo de regra **`merchant_id`** (Revisão, API, MCP e tela de Regras).
+3. ~~Pagamento ao CNPJ de banco que não é fatura~~ → só o CNPJ não basta: exige categoria/descrição de fatura ou
+   valor casado com crédito/fatura do cartão; sem isso, categorização normal.
 
 **Média — consistência entre abas e qualidade da categorização**
 
-4. "Despesas" do Painel exclui impostos; "gasto médio" da DRE gerencial inclui. Unificar o conceito ou renomear.
+4. ~~"Despesas" do Painel × "gasto médio" da DRE gerencial~~ → conceito único `SPENDING_LINES` (linhas abaixo da
+   receita líquida; imposto de renda já sai da receita).
 5. Médias de 6 meses (DRE gerencial, reserva) contam meses anteriores ao primeiro dado como zero → custo
    subestimado e reserva superestimada nos primeiros meses de uso (a previsão de liquidez já corta).
 6. Recorrências que pararam ficam "detectadas" para sempre (lista do Planejamento, premissas da previsão).

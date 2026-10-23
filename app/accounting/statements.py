@@ -22,11 +22,15 @@ SUBTOTALS = [
     ("margem_essenciais", "Margem após essenciais", ["receita_liquida", "essenciais"]),
     ("resultado_operacional", "Resultado operacional", ["margem_essenciais", "estilo_vida", "terceiros", "nao_classificado"]),
     ("resultado_liquido", "Resultado recorrente (poupança)", ["resultado_operacional", "receitas_financeiras", "despesas_financeiras"]),
-    ("resultado_total", "Resultado total", ["resultado_liquido", "extraordinarios"]),
+    ("resultado_total", "Resultado total", ["resultado_liquido", "extraordinarios", "entradas_a_classificar"]),
 ]
+# "Despesas" em todas as telas = linhas abaixo da receita líquida (impostos sobre a renda já saem da receita),
+# de modo que receita líquida − despesas + receitas financeiras = resultado recorrente
+SPENDING_LINES = ["essenciais", "estilo_vida", "terceiros", "nao_classificado", "despesas_financeiras"]
 DRE_ORDER = ["receita_operacional", "outras_receitas", "impostos_renda", "receita_liquida", "essenciais",
              "margem_essenciais", "estilo_vida", "terceiros", "nao_classificado", "resultado_operacional",
-             "receitas_financeiras", "despesas_financeiras", "resultado_liquido", "extraordinarios", "resultado_total"]
+             "receitas_financeiras", "despesas_financeiras", "resultado_liquido", "extraordinarios", "entradas_a_classificar",
+             "resultado_total"]
 
 
 def month_list(end: str | None = None, n: int = 12) -> list[str]:

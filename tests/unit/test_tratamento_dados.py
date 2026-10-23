@@ -41,7 +41,7 @@ def test_emissores_de_cartao_conectado():
 
 def test_pagamento_ao_emissor_com_cartao_conectado_nao_vira_despesa():
     # Pix ao CNPJ do Nubank sem valor casado: com o cartão Nubank conectado é fatura (a conferir), não despesa
-    pay = _tx("p1", "Pix enviado Nu Pagamentos", -321.0, doc="18236120000158")
+    pay = _tx("p1", "Pagamento de fatura Nu Pagamentos", -321.0, doc="18236120000158")
     dec, _ = card_payments([pay], [], {"cc1": "i1"}, set(), connected_issuers={"Nubank"})
     assert dec["p1"].event_type == "CARD_PAYMENT" and "card_payment_unmatched" in dec["p1"].review
     # sem o cartão daquele emissor, segue como cartão não conectado (despesa + revisão)
@@ -104,3 +104,56 @@ def test_dfc_ignora_pendente_duplicado_e_usa_data_de_caixa(db_reset):
     s.flush()
     out = dfc(s, ["2026-01", "2026-02"])
     assert out["net_change"] == {"2026-01": 0.0, "2026-02": -150.0}
+
+
+def test_pix_ao_banco_sem_evidencia_de_fatura_segue_categorizacao_normal():
+    # seguro/consórcio/empréstimo pago ao CNPJ do banco: sem categoria nem descrição de fatura e sem valor casado
+    seguro = _tx("s1", "Pix enviado Itau Seguros", -89.9, doc="60701190000104")
+    dec, links = card_payments([seguro], [], {"cc1": "i1"}, set(), connected_issuers={"Itaú"})
+    assert "s1" not in dec and not links
+    # com valor casado com o crédito do cartão continua sendo fatura
+    credit = _tx("c1", "Pagamento recebido", 89.9, acc="cc1", typ="CREDIT")
+    dec, links = card_payments([seguro, credit], [], {"cc1": "i1"}, set())
+    assert dec["s1"].event_type == "CARD_PAYMENT" and len(links) == 1
+
+
+def test_entrada_a_classificar_nao_e_renda(db_reset):
+    from app.accounting.statements import SPENDING_LINES, dre
+    from app.analytics.overview import kpis_from_dre
+    from app.categorization.chart import seed_chart
+    from app.models import Account, FinancialEvent, Item
+    s = db_reset()
+    seed_chart(s)
+    s.add(Item(id="i1"))
+    s.flush()
+    s.add(Account(id="b1", item_id="i1", type="BANK"))
+    common = dict(account_id="b1", rule_source="default", confidence=0.5, event_type="INCOME")
+    s.add(FinancialEvent(source_id="sal", competence_date=date(2026, 2, 5), amount=5000.0, category_id="rec.salario",
+                         **common))
+    s.add(FinancialEvent(source_id="pix", competence_date=date(2026, 2, 9), amount=300.0,
+                         category_id="rec.pix_terceiros", **common))
+    s.add(FinancialEvent(source_id="ir", competence_date=date(2026, 2, 20), amount=-400.0, category_id="impostos.ir",
+                         account_id="b1", rule_source="default", confidence=0.8, event_type="TAX"))
+    s.flush()
+    d = dre(s, ["2026-02"], with_valuation=False)
+    rows = {r["key"]: r["values"]["2026-02"] for r in d["rows"]}
+    assert rows["receita_liquida"] == 4600.0          # 5000 − 400; o Pix sem decisão não é renda
+    assert rows["entradas_a_classificar"] == 300.0
+    assert rows["resultado_liquido"] == 4600.0
+    assert rows["resultado_total"] == 4900.0
+    k = kpis_from_dre(d)["2026-02"]
+    assert k["a_classificar_entradas"] == 300.0
+    assert k["despesas"] == -sum(rows[x] for x in SPENDING_LINES)   # impostos já saíram da receita
+
+
+def test_regra_por_comerciante_sem_cnpj():
+    from app.categorization.engine import compile_rules, match_rule
+    from app.models import CategoryRule
+    rule = CategoryRule(id=1, priority=10, field="merchant_id", operator="equals", pattern="42", active=True,
+                        category_id="terceiros.pf", event_type="REFUND", direction=None, account_id=None,
+                        amount_min=None, amount_max=None)
+    tx = _tx("t", "Transferência recebida", 50.0)  # sem nome de contraparte nem documento
+    rules = compile_rules([rule])
+    assert match_rule(tx, rules, merchant_id=42) is rule
+    assert match_rule(tx, rules, merchant_id=7) is None
+    assert match_rule(tx, rules) is None

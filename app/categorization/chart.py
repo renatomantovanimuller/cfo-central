@@ -1,7 +1,8 @@
 """Plano de contas pessoal (seed) e mapa de categorias Pluggy → plano próprio.
 
 dre_line: receita_operacional | outras_receitas | impostos_renda | essenciais | estilo_vida | terceiros |
-          receitas_financeiras | despesas_financeiras | nao_classificado | None (patrimonial)
+          receitas_financeiras | despesas_financeiras | nao_classificado | extraordinarios | entradas_a_classificar |
+          None (patrimonial)
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ CHART: list[tuple] = [
     ("rec.beneficios", "rec", "Benefícios e auxílios", "receita", "receita_operacional", False, "INCOME", None),
     ("rec.presentes", "rec", "Presentes recebidos", "receita", "outras_receitas", False, "INCOME", None),
     ("rec.vendas", "rec", "Venda de bens", "receita", "outras_receitas", False, "INCOME", None),
-    ("rec.pix_terceiros", "rec", "Recebido de terceiros (a classificar)", "receita", "outras_receitas", False, "INCOME", None),
+    ("rec.pix_terceiros", "rec", "Recebido de terceiros (a classificar)", "receita", "entradas_a_classificar", False, "INCOME", None),
     ("rec.heranca", "rec", "Herança e doações recebidas", "receita", "extraordinarios", False, "INCOME", None),
     ("rec.outras", "rec", "Outras receitas", "receita", "outras_receitas", False, "INCOME", None),
     # Receitas financeiras
@@ -196,12 +197,15 @@ DRE_LINES = [
     ("receitas_financeiras", "Receitas financeiras", 1),
     ("despesas_financeiras", "Despesas financeiras", -1),
     ("extraordinarios", "Itens extraordinários", 1),
+    # entrada sem decisão (Pix de terceiro: renda? reembolso? empréstimo devolvido?) não é renda até você dizer
+    ("entradas_a_classificar", "Entradas a classificar", 1),
 ]
 
 # ajustes em categorias de sistema já gravadas (id, campo, valor antigo, valor novo): rodam uma vez, sem
 # tocar no que o usuário tenha mudado para outro valor
 CATEGORY_UPGRADES = [
     ("rec.heranca", "dre_line", "outras_receitas", "extraordinarios"),
+    ("rec.pix_terceiros", "dre_line", "outras_receitas", "entradas_a_classificar"),
 ]
 
 

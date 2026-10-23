@@ -80,8 +80,9 @@ def compile_rules(rules: Iterable[CategoryRule]) -> list[CompiledRule]:
     return out
 
 
-def _field_value(tx: TxView, fld: str) -> str:
+def _field_value(tx: TxView, fld: str, merchant_id: int | None = None) -> str:
     return {
+        "merchant_id": str(merchant_id) if merchant_id is not None else "",
         "description": tx.text,
         "merchant": norm(tx.party_name),
         "cnpj": tx.party_doc or "",
@@ -92,7 +93,11 @@ def _field_value(tx: TxView, fld: str) -> str:
     }.get(fld, tx.text)
 
 
-def match_rule(tx: TxView, rules: list[CompiledRule]) -> CategoryRule | None:
+EXACT_FIELDS = ("cnpj", "counterparty_doc", "account", "pluggy_category", "mcc", "merchant_id")
+
+
+def match_rule(tx: TxView, rules: list[CompiledRule], merchant_id: int | None = None) -> CategoryRule | None:
+    """`merchant_id`: comerciante já resolvido do lançamento (regras por comerciante, inclusive sem CNPJ)."""
     for cr in rules:
         r = cr.rule
         if r.direction == "in" and tx.flow <= 0 or r.direction == "out" and tx.flow >= 0:
@@ -102,8 +107,8 @@ def match_rule(tx: TxView, rules: list[CompiledRule]) -> CategoryRule | None:
         amt = abs(tx.flow)
         if r.amount_min is not None and amt < r.amount_min or r.amount_max is not None and amt > r.amount_max:
             continue
-        val = _field_value(tx, r.field)
-        pat = r.pattern if r.field in ("cnpj", "counterparty_doc", "account", "pluggy_category", "mcc") else norm(r.pattern)
+        val = _field_value(tx, r.field, merchant_id)
+        pat = r.pattern.strip() if r.field in EXACT_FIELDS else norm(r.pattern)
         if r.field in ("cnpj", "counterparty_doc"):
             pat = re.sub(r"\D", "", pat)
         ok = (cr.regex.search(val) is not None if cr.regex else

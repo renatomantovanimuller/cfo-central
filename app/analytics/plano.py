@@ -96,7 +96,7 @@ def safe_to_spend(s: Session, today: date | None = None) -> dict:
             "Meta de aporte = configurada no plano; sem meta, 20% da renda prevista limitado à sobra mediana dos 3 meses anteriores.",
             "Gasto até hoje = despesas do mês por competência (cartão na data da compra), já descontados reembolsos.",
             "Recorrências pendentes = gastos recorrentes detectados com próxima data ainda neste mês.",
-            "Extraordinários (herança, doações) não entram na renda.",
+            "Extraordinários (herança, doações) e entradas ainda a classificar (Pix de terceiros) não entram na renda.",
         ],
     }
 

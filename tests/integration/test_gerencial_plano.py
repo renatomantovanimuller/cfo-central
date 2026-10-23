@@ -18,6 +18,11 @@ def test_extraordinary_income_kept_out_of_recurring_result(synced):
     from app.services.pipeline import pipeline
     sf = synced["sf"]
     sid, month, amount = _month_with_income(sf)
+    # na massa fictícia o salário chega como Pix sem decisão (fora do recorrente): classifica como o usuário faria
+    with sf() as s:
+        _apply_override(s, sid, EventPatch(category_id="rec.salario", learn=False))
+        s.commit()
+    pipeline.rebuild_now("test")
     with sf() as s:
         before = {r["key"]: r["values"][month] for r in dre(s, [month], False)["rows"]}
         _apply_override(s, sid, EventPatch(category_id="rec.heranca"))

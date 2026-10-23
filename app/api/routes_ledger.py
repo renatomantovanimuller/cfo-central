@@ -231,9 +231,17 @@ class RuleBody(BaseModel):
     active: bool = True
 
 
+RULE_FIELDS = {"description", "merchant", "merchant_id", "cnpj", "counterparty_doc", "pluggy_category", "mcc",
+               "account"}
+
+
 def _validate_rule(body: RuleBody) -> None:
     if not (body.category_id or body.event_type):
         raise HTTPException(400, "informe categoria e/ou tipo de evento")
+    if body.field not in RULE_FIELDS:
+        raise HTTPException(400, f"campo de regra inválido: {body.field}")
+    if body.field == "merchant_id" and not body.pattern.strip().isdigit():
+        raise HTTPException(400, "merchant_id: informe o número do comerciante")
     if body.operator == "regex":
         try:
             re.compile(body.pattern)
@@ -253,7 +261,9 @@ def preview_rule(body: RuleBody, db: Session = Depends(get_db)) -> dict:
     _validate_rule(body)
     rule = CategoryRule(id=-1, **body.model_dump())
     compiled = compile_rules([rule])
-    hits = [t for t in load_tx_views(db) if not t.removed and match_rule(t, compiled)]
+    mids = dict(db.execute(select(FinancialEvent.source_id, FinancialEvent.merchant_id)
+                           .where(FinancialEvent.merchant_id.is_not(None))).all())
+    hits = [t for t in load_tx_views(db) if not t.removed and match_rule(t, compiled, mids.get(t.id))]
     return {"count": len(hits), "total": round(sum(t.flow for t in hits), 2),
             "sample": [{"id": t.id, "date": t.date, "description": t.description, "amount": t.flow} for t in hits[:25]]}
 
@@ -461,10 +471,11 @@ def apply_review(db: Session, review_id: int, body: ReviewAction, actor: str = "
             m = db.get(Merchant, int(r_id))
             if m and body.category_id:
                 m.default_category_id, m.category_origin = body.category_id, "user"
-            if body.event_type:  # tipo explícito → regra por comerciante (documento ou nome)
-                db.add(CategoryRule(name=f"Revisão: {m.canonical_name if m else r.entity_id}",
-                                    field="cnpj" if m and m.cnpj else "merchant", operator="equals",
-                                    pattern=(m.cnpj if m and m.cnpj else (m.canonical_name if m else "")),
+            if body.event_type and m:  # tipo explícito → regra pelo documento ou, sem ele, pelo próprio comerciante
+                # (o nome canônico pode vir da descrição e não casar com a contraparte dos lançamentos futuros)
+                db.add(CategoryRule(name=f"Revisão: {m.canonical_name}",
+                                    field="cnpj" if m.cnpj else "merchant_id", operator="equals",
+                                    pattern=m.cnpj or str(m.id),
                                     category_id=body.category_id, event_type=body.event_type, origin="user"))
         elif r_entity == "transaction" and r.entity_id:
             _apply_override(db, r.entity_id, EventPatch(category_id=body.category_id, event_type=body.event_type),

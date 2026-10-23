@@ -293,7 +293,7 @@ def _decide(tx: TxView, o: EventOverride | None, rules, structural: dict[str, De
     if paired and paired.event_type == EventType.INTERNAL_TRANSFER:
         # as duas pontas estão em contas conectadas: dinheiro só mudou de bolso. Um ajuste/regra que dizia
         # "receita" (feito quando a origem não estava conectada) contaria a receita duas vezes; vale a conciliação.
-        r = None if o and (o.category_id or o.event_type) else match_rule(tx, rules)
+        r = None if o and (o.category_id or o.event_type) else match_rule(tx, rules, m.id if m else None)
         forced = (o and (o.category_id or o.event_type) and (o.event_type or "") != EventType.INTERNAL_TRANSFER) \
             or (r is not None and r.event_type != EventType.INTERNAL_TRANSFER)
         if forced:
@@ -302,7 +302,7 @@ def _decide(tx: TxView, o: EventOverride | None, rules, structural: dict[str, De
         return paired
     if o and (o.category_id or o.event_type):
         return Decision(o.category_id, o.event_type, "manual", f"override:{o.id}", 1.0)
-    r = match_rule(tx, rules)
+    r = match_rule(tx, rules, m.id if m else None)
     if r:
         hits[r.id] += 1
         return Decision(r.category_id, r.event_type, "rule", f"rule:{r.id}", r.confidence)
