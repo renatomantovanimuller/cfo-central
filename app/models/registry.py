@@ -71,6 +71,9 @@ class Merchant(Base):
     canonical_name: Mapped[str] = mapped_column(String(200))
     cnpj: Mapped[str | None] = mapped_column(String(20), unique=True)
     cnae: Mapped[str | None] = mapped_column(String(20))
+    cnae_desc: Mapped[str | None] = mapped_column(String(200))
+    cnae_source: Mapped[str | None] = mapped_column(String(10))  # pluggy | receita
+    enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # última consulta do CNPJ
     default_category_id: Mapped[str | None] = mapped_column(ForeignKey("categories.id"))
     category_origin: Mapped[str | None] = mapped_column(String(15))  # learned | user
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

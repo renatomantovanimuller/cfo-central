@@ -167,12 +167,19 @@ def planning(db: Session = Depends(get_db)) -> dict:
             "aumentos": PL.salary_raises(db)}
 
 
+@router.get("/financial-health")
+def financial_health(db: Session = Depends(get_db)) -> dict:
+    from app.analytics.saude_financeira import financial_health as FH
+    return FH(db)
+
+
 class PlanSettingsBody(BaseModel):
     meta_aporte_mensal: float | None = None
     reserva_meses_minima: float | None = None
     limite_fgc: float | None = None
     retorno_esperado_aa: float | None = None
     aumento_para_aporte: float | None = Field(default=None, ge=0, le=1)
+    score_credito: float | None = Field(default=None, ge=0, le=1000)
 
 
 @router.put("/plan/settings")

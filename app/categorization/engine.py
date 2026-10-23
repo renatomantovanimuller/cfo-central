@@ -32,6 +32,7 @@ class TxView:
     installment_number: int | None
     total_installments: int | None
     removed: bool
+    merchant_cnae: str | None = None  # subclasse CNAE (7 dígitos) do estabelecimento, quando informada
 
     @property
     def text(self) -> str:

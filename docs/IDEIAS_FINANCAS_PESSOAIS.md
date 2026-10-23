@@ -248,6 +248,16 @@ Monte Carlo (`plano.monte_carlo`) e bandas. A tela fica no Planejamento, ao lado
 > - fila da Revisão ordenada por impacto × incerteza.
 >
 > Testes em `tests/unit/test_fase1_planejamento.py`.
+>
+> **Fase 2, primeiros itens implementados:**
+> - **§1 índice de saúde financeira**: 8 indicadores em 4 pilares, cada um com valor, explicação e o que fazer.
+>   Indicador sem dado fica fora da média. A nota é gravada mês a mês para a tendência e aparece no Painel e no
+>   Planejamento. O score de crédito é informado no Plano.
+> - **§8.1 CNAE**: o código que a Pluggy já envia passa a ser usado e fica gravado no comerciante. Mapa CNAE →
+>   categoria por prefixo, como sinal na disputa com palavra-chave, MCC e mapa Pluggy, e como característica do
+>   classificador. A consulta pública do CNPJ (BrasilAPI) é opcional e começa desligada.
+>
+> Testes em `tests/unit/test_cnae_saude.py`.
 
 | Fase | Itens | Por quê |
 |---|---|---|

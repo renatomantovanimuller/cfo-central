@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.accounting.balance import current_position, future_installments
 from app.accounting.statements import SPENDING_LINES, dre, month_list
+from app.categorization.cnae import cnae_category
 from app.models import (Account, Budget, Category, CreditCardBill, DailyNetWorth, EventType, FinancialEvent,
                         Merchant, RecurringRule, ReviewItem)
 from app.utils.time import month_add, month_bounds, month_key, today_brt
@@ -245,7 +246,9 @@ def merchants_ranking(s: Session, months: int = 12) -> list[dict]:
         out.append({"id": mid, "name": m.canonical_name, "doc": m.cnpj, "count": n, "total": round(total, 2),
                     "avg_ticket": round(total / n, 2), "first": first, "last": last,
                     "category_id": cid, "category": cats[cid].name if cid in cats else None,
-                    "category_origin": m.category_origin})
+                    "category_origin": m.category_origin, "cnae": m.cnae, "cnae_desc": m.cnae_desc,
+                    "cnae_source": m.cnae_source,
+                    "cnae_ramo": cats[cn[0]].name if (cn := cnae_category(m.cnae)) and cn[0] in cats else None})
     return sorted(out, key=lambda x: x["total"])
 
 

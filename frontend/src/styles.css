@@ -354,3 +354,10 @@ a.btn.primary { color: #fff; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: end; }
 .ok-line { display: inline-flex; align-items: center; gap: 6px; color: var(--positive); font-weight: 600; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* saúde financeira */
+.health { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 18px; align-items: center; }
+.health-score { display: grid; gap: 6px; justify-items: start; }
+.health-score .big { font-size: 40px; font-weight: 720; line-height: 1; }
+.health-pillars { display: grid; gap: 4px; }
+@media (max-width: 640px) { .health { grid-template-columns: 1fr; } }

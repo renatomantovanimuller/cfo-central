@@ -313,6 +313,38 @@ def merchants(months: int = 12, db: Session = Depends(get_db)) -> list[dict]:
     return O.merchants_ranking(db, months)
 
 
+class EnrichmentBody(BaseModel):
+    habilitado: bool
+
+
+@router.get("/merchants/enrichment")
+def merchants_enrichment(db: Session = Depends(get_db)) -> dict:
+    from app.categorization import cnpj
+    return cnpj.status(db)
+
+
+@router.put("/merchants/enrichment")
+def set_merchants_enrichment(body: EnrichmentBody, db: Session = Depends(get_db)) -> dict:
+    from app.analytics.plano import put_setting
+    from app.categorization import cnpj
+    put_setting(db, cnpj.SETTING, {"cnpj": body.habilitado})
+    db.commit()
+    return cnpj.status(db)
+
+
+@router.post("/merchants/enrich")
+def enrich_merchants_now(db: Session = Depends(get_db)) -> dict:
+    """Consulta agora um lote de CNPJs sem CNAE e reconstrói o razão com o novo sinal."""
+    from app.categorization import cnpj
+    if not cnpj.enabled(db):
+        raise HTTPException(400, "ative a consulta pública do CNPJ primeiro")
+    res = cnpj.enrich_merchants(db)
+    db.commit()
+    if res["com_cnae"]:
+        pipeline.rebuild_now("cnae")
+    return {**res, **cnpj.status(db)}
+
+
 class MerchantPatch(BaseModel):
     canonical_name: str | None = None
     default_category_id: str | None = None

@@ -21,6 +21,7 @@ PLAN_DEFAULTS = {
     "limite_fgc": 250000.0,
     "retorno_esperado_aa": None,     # None = usa o histórico ex-ante da carteira
     "aumento_para_aporte": None,     # fração de cada aumento de renda que vai para o aporte (None = desligado)
+    "score_credito": None,           # informado pelo usuário (o Open Finance não traz); entra na saúde financeira
 }
 EXPENSE_LIKE = ("EXPENSE", "FINANCIAL_EXPENSE", "TAX", "REFUND")
 ANNUAL_DAYS = 300  # recorrência com intervalo a partir disso é anual (provisionada mês a mês)
@@ -348,7 +349,7 @@ def policy_reviews(s: Session) -> list[ReviewCandidate]:
         out.append(ReviewCandidate(
             "policy:reserva", "policy_reserve", "warn", "plan", "reserva",
             f"Reserva de emergência: faltam {fmt_brl(g['falta'])} para o degrau \"{g['nome']}\" "
-            f"({r['meses']:.1f} de {r['minimo_meses']:g} meses)",
+            f"({r['meses']:.1f} de {r['minimo_meses']:g} meses)".replace(".", ","),
             f"Liquidez imediata {fmt_brl(r['liquido_d0_d1'])} para custo essencial de "
             f"{fmt_brl(r['custo_essencial_mensal'])}/mês. O aporte do mês vai primeiro para a reserva."))
     return out  # excesso de FGC já é sinalizado por portfolio_reviews

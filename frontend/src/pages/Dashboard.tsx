@@ -8,6 +8,7 @@ import { Delta, Empty, Money, Panel } from "../components/ui";
 import { ProvisionalBanner, SetupChecklist, Welcome } from "../components/Onboarding";
 import { reviewSummary } from "../components/reviewBadge";
 import { Term } from "../components/Term";
+import { HealthCard } from "../components/FinancialHealth";
 import { useOnboarding } from "../hooks/useOnboarding";
 import { brl, compact, date, isPartialMonth, monthAxisLabel, monthLabel, monthLong, PARTIAL_OPACITY, pct, prettyName, today } from "../format";
 
@@ -87,6 +88,7 @@ export default function Dashboard() {
       </section>
 
       {d.safe_to_spend && <SafeToSpend s={d.safe_to_spend} onPlan={() => nav("/planejamento")} />}
+      <HealthCard onOpen={() => nav("/planejamento")} />
 
       {!hasData && <Panel><Empty title={`Sem lançamentos em ${monthLong(month)}`}>Escolha outro mês no seletor acima ou sincronize para buscar novidades.</Empty></Panel>}
 

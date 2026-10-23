@@ -11,6 +11,7 @@ import { Chart, cssVar, kTick } from "../components/Chart";
 import { Chip, Money, Panel, useToast } from "../components/ui";
 import { brl, date, monthLabel, pct, prettyName } from "../format";
 import { Term } from "../components/Term";
+import { HealthDetail } from "../components/FinancialHealth";
 
 export default function Planning() {
   const q = useQuery({ queryKey: ["planning"], queryFn: () => api<any>("/api/planning") });
@@ -36,12 +37,14 @@ export default function Planning() {
   useEffect(() => {
     if (!d) return;
     setPlano({ meta_aporte_mensal: formatInputNumber(d.plano.meta_aporte_mensal), reserva_meses_minima: formatInputNumber(d.plano.reserva_meses_minima ?? 6),
-      aumento: d.plano.aumento_para_aporte == null ? "" : formatInputNumber(Math.round(d.plano.aumento_para_aporte * 100)) });
+      aumento: d.plano.aumento_para_aporte == null ? "" : formatInputNumber(Math.round(d.plano.aumento_para_aporte * 100)),
+      score: d.plano.score_credito == null ? "" : formatInputNumber(d.plano.score_credito) });
     setAlvos(Object.fromEntries(d.politica.classes.map((c: any) => [c.classe, c.alvo !== null ? formatInputNumber(Math.round(c.alvo * 1000) / 10) : ""])));
   }, [d]);
   const savePlano = useApiMutation({
-    mutationFn: (p: { aporte: number | null; meses: number; aumento: number | null }) => api("/api/plan/settings", { method: "PUT", body: {
-      meta_aporte_mensal: p.aporte, reserva_meses_minima: p.meses, aumento_para_aporte: p.aumento === null ? null : p.aumento / 100 } }),
+    mutationFn: (p: { aporte: number | null; meses: number; aumento: number | null; score: number | null }) => api("/api/plan/settings", { method: "PUT", body: {
+      meta_aporte_mensal: p.aporte, reserva_meses_minima: p.meses, aumento_para_aporte: p.aumento === null ? null : p.aumento / 100,
+      score_credito: p.score } }),
     successMessage: "Plano salvo", invalidate: "all",
   });
   const saveAlvos = useApiMutation({
@@ -52,7 +55,8 @@ export default function Planning() {
   const vAporte = validateNumber(plano.meta_aporte_mensal, { allowNegative: false });
   const vMeses = validateNumber(plano.reserva_meses_minima, { required: true, min: 0, max: 120 });
   const vAumento = validateNumber(plano.aumento, { allowNegative: false, min: 0, max: 100 });
-  const planoInvalid = !!(vAporte.error || vMeses.error || vAumento.error);
+  const vScore = validateNumber(plano.score, { allowNegative: false, min: 0, max: 1000 });
+  const planoInvalid = !!(vAporte.error || vMeses.error || vAumento.error || vScore.error);
   const alvosInvalid = Object.values(alvos).some((v) => validateNumber(v, { min: 0, max: 100 }).error);
   const pol = d.politica;
   const somaAlvos = Object.values(alvos).reduce((a, v) => a + (parseBRL(v) ?? 0), 0);
@@ -66,6 +70,7 @@ export default function Planning() {
         <ConfirmDialog title="Excluir esta meta?" itemName={goalToDelete.name} confirmLabel="Excluir meta" danger
           onCancel={() => setGoalToDelete(null)} onConfirm={() => { delGoal.mutate(goalToDelete.id); setGoalToDelete(null); }}>{null}</ConfirmDialog>
       )}
+      <HealthDetail />
       <div className="grid g-wide">
         <Panel title="Previsão de caixa" hint="contas correntes, 6 meses">
           <Chart height={260} option={{
@@ -131,8 +136,11 @@ export default function Planning() {
             <dt>Parte de cada aumento</dt>
             <dd><NumberInput width={70} min={0} max={100} placeholder="—" ariaLabel="Percentual de cada aumento destinado ao aporte" value={plano.aumento}
               onChange={(v) => setPlano({ ...plano, aumento: v })} /> <span className="soft small">% de cada aumento de renda vai automaticamente para a meta de aporte (vazio = desligado)</span></dd>
+            <dt>Score de crédito</dt>
+            <dd><NumberInput width={80} min={0} max={1000} placeholder="—" ariaLabel="Score de crédito" value={plano.score}
+              onChange={(v) => setPlano({ ...plano, score: v })} /> <span className="soft small">Serasa/Boa Vista (0–1000); o Open Finance não traz, entra na saúde financeira</span></dd>
           </dl>
-          <button className="btn primary sm" style={{ marginTop: 10 }} disabled={planoInvalid || savePlano.isPending} onClick={() => savePlano.mutate({ aporte: vAporte.value, meses: vMeses.value ?? 6, aumento: vAumento.value })}>Salvar plano</button>
+          <button className="btn primary sm" style={{ marginTop: 10 }} disabled={planoInvalid || savePlano.isPending} onClick={() => savePlano.mutate({ aporte: vAporte.value, meses: vMeses.value ?? 6, aumento: vAumento.value, score: vScore.value })}>Salvar plano</button>
           <RaiseInfo a={d.aumentos} />
           <h4 style={{ margin: "16px 0 4px" }}>Reserva de emergência</h4>
           <p className={pol.reserva.ok ? "" : "neg"}>

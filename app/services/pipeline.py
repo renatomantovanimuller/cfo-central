@@ -70,6 +70,7 @@ class Pipeline:
             results[iid] = sync_item(sf, self.client, iid, full=full, trigger=trigger,
                                      progress=lambda m, _i=iid: self.state.update(step=f"{_i[:8]} · {m}"))
             self._recent[iid] = time.time()
+        self._enrich_merchants()
         if self._missing_market_data():
             self.state["step"] = "cotações dos novos ativos"
             self.market("post-sync")
@@ -77,6 +78,18 @@ class Pipeline:
         post = self.post_process(trigger)
         self.state["last"] = {"at": time.time(), "items": results, "post": post}
         return self.state["last"]
+
+    def _enrich_merchants(self) -> None:
+        """CNAE dos comerciantes novos pela consulta pública do CNPJ, se o usuário ativou. Nunca derruba o sync."""
+        from app.categorization import cnpj
+        try:
+            with session_factory()() as s:
+                if cnpj.enabled(s):
+                    self.state["step"] = "ramo dos comerciantes (CNPJ)"
+                    cnpj.enrich_merchants(s)
+                    s.commit()
+        except Exception:  # noqa: BLE001
+            log.exception("consulta de CNPJ falhou")
 
     def _missing_market_data(self) -> bool:
         from app.models import Asset, AssetPrice, Investment
@@ -126,6 +139,11 @@ class Pipeline:
                 res["reviews"] = sync_reviews(s, candidates)
                 res["recurring"] = rec
                 res["net_worth"] = snapshot_net_worth(s)
+                try:
+                    from app.analytics.saude_financeira import snapshot_health
+                    res["saude_financeira"] = snapshot_health(s)
+                except Exception:  # noqa: BLE001 - o índice nunca derruba a reconstrução
+                    log.exception("índice de saúde financeira falhou")
                 s.commit()
             rl.finish(_jsonable(res))
             return res
