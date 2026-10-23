@@ -19,3 +19,6 @@ curadoria/*.json
 node_modules/
 .env.*
 !.env.example
+
+# resumo diário do Claude (log local)
+logs/

@@ -248,6 +248,28 @@ def saude_dados(rodar_agora: bool = False) -> dict:
 
 
 @mcp.tool()
+def guia() -> dict:
+    """Guia do CFO: fatos do dia já conferidos, em linguagem simples. `manchete` = quanto ainda dá para gastar no mês;
+    `itens` = o que importa agora (nivel importante > atencao > info > bom, cada um com id, título, texto e valores);
+    `proximos` = vencimentos e recorrências dos próximos 10 dias. É a base do resumo diário (`publicar_briefing`)."""
+    from app.analytics.guia import guia as G
+    with _db() as db:
+        out = G(db)
+    return _plain(out)
+
+
+@mcp.tool()
+def publicar_briefing(resumo: str, itens: list[dict] | None = None) -> dict:
+    """Publica o resumo do dia que aparece no Painel ("Seu CFO hoje"). `resumo`: 2 a 4 frases, calmas e diretas.
+    `itens`: [{"id": <id de guia>, "texto": <reescrita curta, opcional>}] na ordem de prioridade que você escolher.
+    Só aceita ids existentes em `guia` e valores em R$ que aparecem nos fatos (formato R$ 1.234,56); se recusar,
+    a resposta lista o que corrigir. Não altera nenhum lançamento."""
+    from app.analytics.guia import publicar_briefing as P
+    with _db() as db:
+        return _plain(P(db, resumo, itens, autor=ACTOR))
+
+
+@mcp.tool()
 def classificador() -> dict:
     """Classificador treinado nas decisões do usuário (TF-IDF + regressão logística): amostras, validação cruzada
     (acurácia e precisão acima do limiar), se está habilitado, quantos lançamentos reclassificou/confirmou e exemplos

@@ -7,9 +7,10 @@ import { useMonth } from "../components/Layout";
 import { Delta, Empty, Money, Panel } from "../components/ui";
 import { ProvisionalBanner, SetupChecklist, Welcome } from "../components/Onboarding";
 import { reviewSummary } from "../components/reviewBadge";
+import { Guide } from "../components/Guide";
 import { Term } from "../components/Term";
 import { useOnboarding } from "../hooks/useOnboarding";
-import { brl, compact, date, isPartialMonth, monthAxisLabel, monthLabel, monthLong, PARTIAL_OPACITY, pct, prettyName, today } from "../format";
+import { brl, compact, date, isPartialMonth, monthAxisLabel, monthLabel, monthLong, PARTIAL_OPACITY, pct, prettyName, thisMonth, today } from "../format";
 
 export default function Dashboard() {
   const { month } = useMonth();
@@ -34,6 +35,7 @@ export default function Dashboard() {
     <>
       <ProvisionalBanner />
       <SetupChecklist />
+      {month === thisMonth() && <Guide />}
       <section className="panel networth">
         <div className="figure">
           <div className="lbl"><Term k="patrimonio">Patrimônio líquido hoje</Term></div>

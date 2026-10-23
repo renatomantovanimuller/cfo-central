@@ -28,6 +28,7 @@ export default function SettingsPage() {
   const addManual = useApiMutation({ mutationFn: () => api("/api/manual-assets", { method: "POST", body: { ...m, value: vValue.value } }),
     successMessage: "Item salvo no balanço", invalidate: "all", onSuccess: () => setM({ ...m, name: "", value: "" }) });
   const delManual = useApiMutation({ mutationFn: (id: number) => api(`/api/manual-assets/${id}`, { method: "DELETE" }), invalidate: "all", successMessage: "Item removido" });
+  const guide = useQuery({ queryKey: ["guide"], queryFn: () => api<any>("/api/guide"), staleTime: 60_000 });
   const alerts = useQuery({ queryKey: ["alerts"], queryFn: () => api<any>("/api/alerts/status") });
   const toast = useToast();
   const [editMail, setEditMail] = useState(false);
@@ -60,6 +61,19 @@ export default function SettingsPage() {
         )}
         {alerts.data?.ultimos?.length > 0 && <table className="table" style={{ marginTop: 8 }}><tbody>{alerts.data.ultimos.map((n: any, i: number) => (
           <tr key={i}><td className="soft small">{dateTime(n.em)}</td><td>{n.assunto}</td><td>{n.status === "sent" ? <Chip tone="green">enviado</Chip> : <Chip tone="red">erro</Chip>}</td></tr>))}</tbody></table>}
+      </Panel>
+
+      <Panel title="Resumo diário do Claude" hint="o texto de “Seu CFO hoje” no Painel, escrito com o seu plano do Claude">
+        {guide.data?.briefing_ultimo
+          ? <p style={{ marginTop: 0 }}>Último resumo: <b>{dateTime(guide.data.briefing_ultimo)}</b>.
+            {!guide.data.briefing && " Está com mais de 36 horas; o Painel mostra só os avisos calculados pelo app."}</p>
+          : <p className="note" style={{ marginTop: 0 }}>Ainda não configurado. Sem ele, o Painel mostra os avisos calculados pelo app.</p>}
+        <ol className="small soft" style={{ margin: 0, paddingLeft: 18 }}>
+          <li>Instale o Claude Code e rode <code>claude</code> uma vez para entrar com a sua conta do plano (Pro ou Max). Não usa chave de API.</li>
+          <li>Dê dois cliques em <code>AGENDAR-RESUMO.bat</code>, na pasta do CFO Central. Ele agenda o resumo para as 7h30 e já gera o primeiro.</li>
+        </ol>
+        <p className="note">O Claude lê os avisos já conferidos pelo app e escreve um resumo curto. Ele não altera lançamentos, e o app recusa
+          qualquer valor que não esteja nos seus dados. Se o PC estiver desligado no horário, o resumo é gerado quando ele ligar.</p>
       </Panel>
 
       <Panel title="Contas" hint="apelidos e o que entra no patrimônio" flush>
