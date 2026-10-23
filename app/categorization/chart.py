@@ -20,7 +20,8 @@ CHART: list[tuple] = [
     ("rec.beneficios", "rec", "Benefícios e auxílios", "receita", "receita_operacional", False, "INCOME", None),
     ("rec.presentes", "rec", "Presentes recebidos", "receita", "outras_receitas", False, "INCOME", None),
     ("rec.vendas", "rec", "Venda de bens", "receita", "outras_receitas", False, "INCOME", None),
-    ("rec.pix_terceiros", "rec", "Recebido de terceiros (a classificar)", "receita", "entradas_a_classificar", False, "INCOME", None),
+    ("rec.pix_terceiros", "rec", "Recebido de terceiros (a classificar)", "receita", "entradas_a_classificar", False,
+     "INCOME", None),
     ("rec.heranca", "rec", "Herança e doações recebidas", "receita", "extraordinarios", False, "INCOME", None),
     ("rec.outras", "rec", "Outras receitas", "receita", "outras_receitas", False, "INCOME", None),
     # Receitas financeiras

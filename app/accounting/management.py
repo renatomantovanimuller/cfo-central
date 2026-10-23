@@ -118,7 +118,8 @@ def dre_gerencial(s: Session, month: str | None = None) -> dict:
     }
     return {"month": month, "parcial": month == month_key(today_brt()), "media_de": prev6, "ytd_de": ytd, "rows": rows, "indicadores": indicadores,
             "notas": ["Média = 6 meses fechados anteriores; YTD = acumulado do ano até o mês.",
-                      "Gasto médio = despesas abaixo da receita líquida, como no Painel (imposto de renda já sai da receita).",
+                      "Gasto médio = despesas abaixo da receita líquida, como no Painel "
+                      "(imposto de renda já sai da receita).",
                       "Resultado recorrente exclui itens extraordinários (herança, doações); a taxa de poupança usa só o recorrente.",
                       "Reserva líquida = caixa + investimentos com liquidez D0/D1 sem marcação a mercado "
                       "(fora Tesouro IPCA+/Prefixado)."]}
