@@ -53,7 +53,8 @@ export default function Balance() {
             <Line label="Passivo total" v={t.liabilities} strong />
             <tr><td colSpan={2} style={{ height: 10 }} /></tr>
             <Line label="Patrimônio líquido" v={t.net_worth} strong />
-            <tr className="l1"><td>Patrimônio de liquidez imediata</td><td className="num">{acct(t.liquid_net_worth)}</td></tr>
+            <tr className="l1"><td title="Caixa e aplicações de liquidez diária sem marcação a mercado">Disponível em até 1 dia</td><td className="num">{acct(t.liquid_net_worth)}</td></tr>
+            {t.financial_net_worth != null && <tr className="l1"><td title="Caixa + investimentos (sem previdência/COE) − fatura atual; inclui aplicações que só resgatam no vencimento">Patrimônio financeiro</td><td className="num">{acct(t.financial_net_worth)}</td></tr>}
           </tbody></table>
         </Panel>
       </div>

@@ -10,7 +10,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.accounting.effective import STALE, SUPERSEDED
-from app.models import Account, FinancialEvent, Institution, Item, ReviewItem
+from app.models import Account, FinancialEvent, Item, ReviewItem
 from app.utils.time import today_brt, utcnow
 
 
@@ -65,9 +65,10 @@ def sync_reviews(s: Session, candidates: list[ReviewCandidate]) -> dict:
 def system_reviews(s: Session) -> list[ReviewCandidate]:
     out: list[ReviewCandidate] = []
     today = today_brt()
-    insts = {i.id: i.name for i in s.scalars(select(Institution))}
+    from app.accounting.institutions import institution_labels
+    labels = institution_labels(s)
     for it in s.scalars(select(Item).where(Item.is_active.is_(True))):
-        name = it.nickname or insts.get(it.institution_id, it.id[:8])
+        name = labels.get(it.id, it.id[:8])
         if it.status in ("LOGIN_ERROR", "OUTDATED", "WAITING_USER_INPUT"):
             out.append(ReviewCandidate(f"item:{it.id}:status:{it.status}", "item_error", "high", "item", it.id,
                                        f"Conexão {name} com status {it.status}",

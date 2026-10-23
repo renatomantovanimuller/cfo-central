@@ -22,8 +22,8 @@ from sqlalchemy.orm import Session
 
 from app.alerts.reviews import fmt_brl
 from app.categorization.text import norm
-from app.models import (Account, AccountBalance, AccountSetting, Asset, FinancialEvent, Institution, Investment,
-                        InvestmentBalance, InvestmentTransaction, Item)
+from app.models import (Account, AccountBalance, AccountSetting, Asset, FinancialEvent, Investment,
+                        InvestmentBalance, InvestmentTransaction)
 from app.utils.time import today_brt
 
 # CNPJ público das instituições mais comuns (raiz + filial matriz); conferir no informe
@@ -104,7 +104,6 @@ def bens_e_direitos(s: Session, ano: int, pend: list[str]) -> list[dict]:
     from app.portfolio.realized import equity_lots
     today = today_brt()
     ref, prev = date(ano, 12, 31), date(ano - 1, 12, 31)
-    insts = {i.id: i.name for i in s.scalars(select(Institution))}
     nick = {a.account_id: a.nickname for a in s.scalars(select(AccountSetting)) if a.nickname}
     out = []
     # contas
@@ -127,11 +126,9 @@ def bens_e_direitos(s: Session, ano: int, pend: list[str]) -> list[dict]:
         InvestmentTransaction.removed_at.is_(None), InvestmentTransaction.date >= date(ano, 1, 1),
         InvestmentTransaction.date <= ref))}
     groups: dict[tuple, dict] = {}
-    item_inst = {}
-    for it in s.scalars(select(Item)):
-        inst = insts.get(it.institution_id)
-        # o MeuPluggy é o agregador, não o custodiante: sem apelido, cai no nome da conta
-        item_inst[it.id] = it.nickname or (inst if inst and "pluggy" not in inst.lower() else None)
+    from app.accounting.institutions import institution_labels, is_aggregator_label
+    # o MeuPluggy é o agregador, não o custodiante: o rótulo único já cai no banco das contas
+    item_inst = {k: v for k, v in institution_labels(s).items() if not is_aggregator_label(v)}
     acc_by_item = {a.item_id: a.name for a in s.scalars(select(Account).where(Account.type == "BANK"))}
     for inv in s.scalars(select(Investment).where(Investment.removed_at.is_(None))):
         a = assets.get(inv.asset_id)
@@ -234,8 +231,8 @@ def bens_e_direitos(s: Session, ano: int, pend: list[str]) -> list[dict]:
 # ------------------------------------------------------------------ tributação exclusiva (aplicações)
 def aplicacoes_financeiras(s: Session, ano: int) -> dict:
     start, end = date(ano, 1, 1), date(ano, 12, 31)
-    insts = {i.id: i.name for i in s.scalars(select(Institution))}
-    item_inst = {it.id: insts.get(it.institution_id) for it in s.scalars(select(Item))}
+    from app.accounting.institutions import institution_labels
+    item_inst = institution_labels(s)
     acc_by_item = {a.item_id: a.name for a in s.scalars(select(Account).where(Account.type == "BANK"))}
     assets = {a.id: a for a in s.scalars(select(Asset))}
     invs = {i.id: i for i in s.scalars(select(Investment))}

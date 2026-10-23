@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.accounting.balance import current_position
 from app.accounting.statements import dfc, dre, month_list
 from app.database.session import session_scope
-from app.models import Account, Category, EventType, FinancialEvent, Item, Institution, Merchant, Transaction
+from app.models import Account, Category, EventType, FinancialEvent, Merchant, Transaction
 
 HEADER = PatternFill("solid", fgColor="111827")
 BRL = '"R$" #,##0.00;[Red]-"R$" #,##0.00'
@@ -21,8 +21,8 @@ BRL = '"R$" #,##0.00;[Red]-"R$" #,##0.00'
 def ledger_rows(s) -> tuple[list[str], list[list]]:
     cats = {c.id: c for c in s.scalars(select(Category))}
     accs = {a.id: a for a in s.scalars(select(Account))}
-    insts = {i.id: i.name for i in s.scalars(select(Institution))}
-    items = {i.id: insts.get(i.institution_id, "") for i in s.scalars(select(Item))}
+    from app.accounting.institutions import institution_labels
+    items = institution_labels(s)
     merchants = {m.id: m.canonical_name for m in s.scalars(select(Merchant))}
     head = ["Data competência", "Data caixa", "Descrição", "Contraparte", "Comerciante", "Conta", "Instituição",
             "Tipo de evento", "Categoria", "Categoria-mãe", "Valor", "Regra", "Origem da regra", "Confiança",

@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, timedelta
 
 import pandas as pd
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.accounting.effective import excluded_pending_ids
-from app.models import (Account, AccountSetting, DailyNetWorth, FinancialEvent, Institution, Item, Loan,
+from app.models import (Account, AccountSetting, DailyNetWorth, FinancialEvent, Loan,
                         ManualAsset, Transaction)
 from app.utils.time import month_bounds, month_key, today_brt
 
@@ -101,8 +100,8 @@ def card_usage(a: Account) -> tuple[float | None, float | None]:
 def current_position(s: Session) -> dict:
     from app.portfolio.service import positions
 
-    insts = {i.id: i.name for i in s.scalars(select(Institution))}
-    items = {i.id: (i.nickname or insts.get(i.institution_id, "")) for i in s.scalars(select(Item))}
+    from app.accounting.institutions import institution_labels
+    items = institution_labels(s)
     settings = {x.account_id: x for x in s.scalars(select(AccountSetting))}
     assumptions: list[str] = []
     cash, cards = [], []
@@ -166,8 +165,13 @@ def current_position(s: Session) -> dict:
     totals["assets"] = totals["cash"] + totals["investments"] + totals["in_transit"] + totals["manual_assets"]
     totals["liabilities"] = totals["card_current"] + totals["card_future"] + totals["loans"] + totals["manual_liabilities"]
     totals["net_worth"] = totals["assets"] - totals["liabilities"]
-    totals["liquid_net_worth"] = totals["cash"] + sum(v for k, v in by_class.items()
-                                                      if k not in ("Previdência", "COE")) - totals["card_current"]
+    # patrimônio financeiro: caixa + investimentos (sem previdência/COE) − fatura atual. NÃO é liquidez: inclui CDB
+    # com resgate só no vencimento, fundos D+30, ações D+2 e Tesouro marcado a mercado
+    totals["financial_net_worth"] = totals["cash"] + sum(v for k, v in by_class.items()
+                                                         if k not in ("Previdência", "COE")) - totals["card_current"]
+    # disponível em até 1 dia: caixa + liquidez diária sem marcação a mercado (a mesma conta da reserva)
+    from app.accounting.management import reserva_liquida
+    totals["liquid_net_worth"] = reserva_liquida(s, {"totals": totals, "positions": pos})
     return {"as_of": today_brt(), "totals": totals, "cash": cash, "investments_by_class": dict(by_class),
             "positions": pos, "cards": cards, "installments": inst, "loans": loans, "manual_assets": m_assets,
             "manual_liabilities": m_liab, "in_transit": transit["lines"], "assumptions": assumptions}

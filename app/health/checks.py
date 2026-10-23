@@ -25,7 +25,7 @@ from app.alerts.reviews import ReviewCandidate, fmt_brl
 from app.accounting.effective import excluded_pending_ids, find_posted_twin
 from app.categorization.text import norm
 from app.models import (Account, AccountBalance, Asset, AssetPrice, CardPaymentLink, CreditCardBill, FinancialEvent,
-                        Institution, Investment, InvestmentTransaction, Item, MarketSeries, ReviewItem, SyncEvent,
+                        Investment, InvestmentTransaction, Item, MarketSeries, ReviewItem, SyncEvent,
                         SyncRun, Transaction)
 from app.utils.time import today_brt, utcnow
 
@@ -62,15 +62,8 @@ def _acc_names(s: Session) -> dict[str, str]:
 
 
 def _item_names(s: Session) -> dict[str, str]:
-    insts = {i.id: i.name for i in s.scalars(select(Institution))}
-    out = {}
-    for it in s.scalars(select(Item)):
-        out[it.id] = it.nickname or insts.get(it.institution_id) or it.id[:8]
-    # MeuPluggy: o nome útil é o do banco das contas
-    for a in s.scalars(select(Account).where(Account.type == "BANK")):
-        if a.item_id in out and out[a.item_id] in ("MeuPluggy", a.item_id[:8]):
-            out[a.item_id] = (a.name or "").split(" ")[0].title() if a.name else out[a.item_id]
-    return out
+    from app.accounting.institutions import institution_labels
+    return institution_labels(s)
 
 
 # ================================================================== coleta
