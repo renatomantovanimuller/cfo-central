@@ -15,7 +15,7 @@
 7. [Orientar: orçamento, planejamento e "quanto posso gastar"](#7-orientar-orçamento-planejamento-e-quanto-posso-gastar)
 8. [Investimentos: carteira, retorno, risco e política](#8-investimentos-carteira-retorno-risco-e-política)
 9. [Impostos: prévia do IRPF](#9-impostos-prévia-do-irpf)
-10. [Avisar: alertas por e-mail](#10-avisar-alertas-por-e-mail)
+10. [Guiar e avisar: Seu CFO hoje e alertas por e-mail](#10-guiar-e-avisar-seu-cfo-hoje-e-alertas-por-e-mail)
 11. [Conversar: assistente MCP](#11-conversar-assistente-mcp)
 12. [Operação, segurança e privacidade](#12-operação-segurança-e-privacidade)
 13. [Salvaguardas contra erro e confusão (visão transversal)](#13-salvaguardas-contra-erro-e-confusão-visão-transversal)
@@ -35,6 +35,7 @@
 | Orientar | "Quanto posso gastar? Vou bater a meta?" | Painel, Categorias, Planejamento | `analytics/plano.py`, `analytics/overview.py`, `analytics/recurring.py` |
 | Investir | "Como a carteira rende e quanto arrisca?" | Carteira, Configurações → Ativos | `portfolio/*` |
 | Tributar | "O que vai na declaração?" | Imposto de renda | `tax/irpf.py` |
+| Guiar | "O que preciso saber e lembrar hoje?" | Painel → Seu CFO hoje | `analytics/guia.py`, `scripts/resumo_diario.*` |
 | Avisar | "O que mudou e merece atenção?" | E-mail, badge "para decidir" | `alerts/notify.py`, `main._alerts_job` |
 | Conversar | "Me explica / classifica isso pra mim" | Claude (MCP) | `assistant/mcp_server.py` |
 
@@ -232,7 +233,22 @@ Sempre rotulado como **prévia para conferência**: os informes das instituiçõ
 
 ---
 
-## 10. Avisar: alertas por e-mail
+## 10. Guiar e avisar: Seu CFO hoje e alertas por e-mail
+
+**Seu CFO hoje** (topo do Painel, `analytics/guia.py`, `components/Guide.tsx`):
+- **Manchete**: quanto ainda dá para gastar no mês (por dia), ou quanto o mês já passou do previsto.
+- **O que importa agora**, por prioridade (importante → atenção → para saber → boa notícia), cada um com uma ação e
+  um "Entendi" que esconde o aviso até a situação mudar: conferência com falha, conexão caída ou autorização
+  vencendo, saldo que não cobre as faturas dos próximos dias, ritmo de gastos acima do previsto, orçamento estourado
+  ou perto do limite, caixa negativo na previsão, reserva abaixo do mínimo, alertas graves da revisão, decisões
+  rápidas pendentes, gasto fora do padrão, números provisórios, fechamento do mês anterior e prévia do IR na época.
+- **Próximos dias**: faturas, recorrências (entradas e saídas) e autorizações que vencem em até 10 dias.
+- **Resumo do Claude** (opcional, plano Pro/Max via Claude Code, sem API): `AGENDAR-RESUMO.bat` agenda
+  `scripts/resumo_diario.ps1` às 7h30. O Claude lê `guia` pelo MCP e publica 2 a 4 frases com `publicar_briefing`,
+  escolhendo a ordem e reescrevendo os avisos. Salvaguardas: só ids existentes, só valores em R$ que aparecem nos
+  fatos (senão recusa e diz o que corrigir), acesso só a quatro ferramentas, validade de 36 h.
+
+**Alertas por e-mail**
 
 `alerts/notify.py` (SMTP/Gmail com senha de app, configurável na tela):
 - **Resumo diário**: itens novos graves/atenção (cada um avisado uma vez só), estado da saúde dos dados e
@@ -249,9 +265,9 @@ As instruções do servidor ensinam as convenções (sinal dos valores, tipos de
 
 | Grupo | Ferramentas |
 |---|---|
-| Leitura | `visao_geral`, `dre`, `dre_gerencial`, `dfc`, `balanco`, `cartoes`, `carteira` (com risco opcional), `planejamento`, `quanto_posso_gastar`, `politica_investimentos`, `retornos_realizados`, `saude_dados`, `classificador`, `imposto_de_renda`, `lancamentos`, `lancamento`, `categorias`, `gastos_por_categoria`, `comerciantes`, `contas`, `revisoes`, `regras`, `esquema`, `consulta_sql` |
+| Leitura | `guia`, `visao_geral`, `dre`, `dre_gerencial`, `dfc`, `balanco`, `cartoes`, `carteira` (com risco opcional), `planejamento`, `quanto_posso_gastar`, `politica_investimentos`, `retornos_realizados`, `saude_dados`, `classificador`, `imposto_de_renda`, `lancamentos`, `lancamento`, `categorias`, `gastos_por_categoria`, `comerciantes`, `contas`, `revisoes`, `regras`, `esquema`, `consulta_sql` |
 | Simulação | `simular_regra`, `simular_meta` |
-| Curadoria | `classificar_lancamentos`, `remover_ajuste`, `classificar_comerciante`, `criar_regra`, `desativar_regra`, `resolver_revisao`, `configurar_conta`, `definir_orcamento`, `definir_plano`, `definir_alocacao_alvo` |
+| Curadoria | `publicar_briefing`, `classificar_lancamentos`, `remover_ajuste`, `classificar_comerciante`, `criar_regra`, `desativar_regra`, `resolver_revisao`, `configurar_conta`, `definir_orcamento`, `definir_plano`, `definir_alocacao_alvo` |
 | Operação | `sincronizar`, `reconstruir_razao` |
 
 Salvaguardas: SQL só `SELECT/WITH` em transação somente leitura (timeout 15 s, tabela `users` bloqueada);
@@ -271,7 +287,7 @@ ao app respeitando a trava; nada move dinheiro.
 - Backup diário (`pg_dump`, 30 dias) e `BACKUP.bat`; migrações Alembic.
 - **Vitrine** estática com dados fictícios no GitHub Pages (`scripts/demo_*`, workflow `demo-pages.yml`).
 - CLI: `sync`, `rebuild`, `market`, `summary`, `export`, `curate`.
-- Testes: 74 (unitários e de integração, Pluggy simulada em `tests/fixtures/fake_pluggy.py`).
+- Testes: 77 (unitários e de integração, Pluggy simulada em `tests/fixtures/fake_pluggy.py`).
 
 ---
 
@@ -300,8 +316,8 @@ Encontradas durante a leitura do código; nenhuma foi corrigida neste documento.
    `apply_review` exige esse campo para itens `exit_no_counterpart` (lança `HTTPException 422`). Pelo assistente,
    esse item, que é de severidade grave, só pode ser dispensado (`app/assistant/mcp_server.py`,
    `app/api/routes_ledger.py: apply_review`).
-2. **README desatualizado**: diz "12 testes" (são 74) e a tabela de ferramentas MCP omite dez delas
-   (`dre_gerencial`, `quanto_posso_gastar`, `politica_investimentos`, `definir_plano`, `definir_alocacao_alvo`,
+2. **README desatualizado**: a contagem de testes foi corrigida, mas a tabela de ferramentas MCP ainda omite dez
+   delas (`dre_gerencial`, `quanto_posso_gastar`, `politica_investimentos`, `definir_plano`, `definir_alocacao_alvo`,
    `simular_meta`, `retornos_realizados`, `saude_dados`, `classificador`, `imposto_de_renda`).
 3. **CNPJ de instituições no IR** cobre só Nubank e Inter (`tax/irpf.py: INSTITUTION_CNPJ`); outros bancos ficam
    sem CNPJ em Bens e Direitos.
@@ -311,8 +327,7 @@ Encontradas durante a leitura do código; nenhuma foi corrigida neste documento.
   ativos, embora a API REST tenha esses endpoints.
 
 **Oportunidades no papel de "parceiro"**
-- **Briefing proativo**: o e-mail diário só sai quando há alerta novo; um resumo semanal curto ("o que mudou, o
-  que fazer") manteria o hábito mesmo sem pendências.
+- **Guia também no e-mail**: o "Seu CFO hoje" existe na tela; o e-mail diário ainda só sai quando há alerta novo.
 - **Explicação de variação**: a DRE gerencial mostra o Δ contra a média, mas não diz *quais* lançamentos explicam
   a diferença (top contribuições por categoria/comerciante).
 - **Score único de confiabilidade** no Painel combinando saúde dos dados, cobertura de classificação e revisões

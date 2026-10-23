@@ -31,6 +31,13 @@ def overview(month: str | None = None, db: Session = Depends(get_db)) -> dict:
     return O.overview(db, month)
 
 
+@router.get("/guide")
+def guide(db: Session = Depends(get_db)) -> dict:
+    """Guia do CFO: o que importa hoje, próximos vencimentos e o resumo diário do Claude (se houver)."""
+    from app.analytics.guia import guia
+    return guia(db)
+
+
 @router.get("/dre")
 def dre(end: str | None = None, months: int = 12, db: Session = Depends(get_db)) -> dict:
     return S.dre(db, S.month_list(_end(end), max(1, min(months, 36))))

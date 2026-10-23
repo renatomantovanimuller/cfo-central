@@ -14,7 +14,9 @@ def _call(name, **args):
 def test_tools_listed_and_reads_work(synced):
     from app.assistant.mcp_server import mcp
     names = {t.name for t in asyncio.run(mcp.list_tools())}
-    assert {"visao_geral", "dre", "lancamentos", "consulta_sql", "classificar_lancamentos", "criar_regra"} <= names
+    assert {"visao_geral", "dre", "lancamentos", "consulta_sql", "classificar_lancamentos", "criar_regra", "guia",
+            "publicar_briefing"} <= names
+    assert _call("guia")["itens"]
     d = _call("dre", meses=3)
     assert d["rows"] and all("children" in r for r in d["rows"])
     ev = _call("lancamentos", tipo="EXPENSE", limite=5)

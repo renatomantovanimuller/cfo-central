@@ -73,6 +73,21 @@ Termos técnicos (DRE, competência, VaR, Sharpe, TIR…) têm explicação ao p
   de app do Gmail; também aceita `SMTP_USER`/`SMTP_PASSWORD` no `.env`).
 - **Backup automático**: serviço `backup` faz `pg_dump` diário em `backups/` e mantém 30 dias.
 
+## Guia do CFO ("Seu CFO hoje")
+
+O Painel abre com um guia curto: quanto ainda dá para gastar no mês, o que pede atenção agora (conexão caída,
+fatura que o saldo não cobre, orçamento estourado, caixa negativo à frente, reserva abaixo do mínimo, decisões
+pendentes, fechamento do mês) e os vencimentos dos próximos 10 dias. Cada aviso tem uma ação e um "Entendi", que o
+esconde até a situação mudar. Os avisos são calculados pelo app (`app/analytics/guia.py`) a partir do razão já
+conferido.
+
+**Resumo diário com o Claude (opcional, usa o seu plano Pro/Max, sem chave de API):** dois cliques em
+**`AGENDAR-RESUMO.bat`** criam uma tarefa no Agendador do Windows que, todo dia às 7h30, roda o Claude Code
+(`claude -p --model sonnet`) com acesso só às ferramentas `guia`, `publicar_briefing`, `revisoes` e `lancamentos`.
+Ele escreve 2 a 4 frases e escolhe a ordem dos avisos. O app recusa o texto se ele citar um valor em R$ que não
+esteja nos fatos ou um aviso que não existe; sem resumo recente (36 h), o Painel mostra só os avisos calculados.
+Pré-requisitos: Claude Code instalado e logado uma vez (`claude`), app rodando. Log em `logs\resumo-diario.log`.
+
 ## Assistente integrado (MCP)
 
 O CFO Central expõe um servidor MCP (`app/assistant/mcp_server.py`) para o Claude consultar e curar os dados
@@ -88,8 +103,8 @@ Claude ──stdio──▶ docker exec -i cfo-central-app-1 python -m app.assis
 
 | Ferramentas | |
 |---|---|
-| Leitura | `visao_geral`, `dre`, `dfc`, `balanco`, `cartoes`, `carteira`, `planejamento`, `lancamentos`, `lancamento`, `categorias`, `gastos_por_categoria`, `comerciantes`, `contas`, `revisoes`, `regras`, `esquema`, `consulta_sql` |
-| Curadoria | `classificar_lancamentos`, `remover_ajuste`, `classificar_comerciante`, `simular_regra`, `criar_regra`, `desativar_regra`, `resolver_revisao`, `configurar_conta`, `definir_orcamento` |
+| Leitura | `guia`, `visao_geral`, `dre`, `dfc`, `balanco`, `cartoes`, `carteira`, `planejamento`, `lancamentos`, `lancamento`, `categorias`, `gastos_por_categoria`, `comerciantes`, `contas`, `revisoes`, `regras`, `esquema`, `consulta_sql` |
+| Curadoria | `publicar_briefing`, `classificar_lancamentos`, `remover_ajuste`, `classificar_comerciante`, `simular_regra`, `criar_regra`, `desativar_regra`, `resolver_revisao`, `configurar_conta`, `definir_orcamento` |
 | Operação | `sincronizar`, `reconstruir_razao` |
 
 Nada no servidor move dinheiro ou opera investimentos. `consulta_sql` roda em transação somente leitura
@@ -104,7 +119,7 @@ ajustes). Reaplique a qualquer momento: `docker compose exec app python -m scrip
 
 ```bash
 pip install -r requirements.txt pytest
-pytest                                   # 12 testes (SQLite); TEST_DATABASE_URL=postgresql+psycopg://... para Postgres
+pytest                                   # 77 testes (SQLite); TEST_DATABASE_URL=postgresql+psycopg://... para Postgres
 python -m scripts.demo_seed              # banco de demonstração com dados fictícios
 python -m scripts.demo_snapshot frontend/dist-demo/demo-data.json   # vitrine estática (após cd frontend && npm run build:demo)
 python -m scripts.cli sync|rebuild|market|summary|export arquivo.xlsx
