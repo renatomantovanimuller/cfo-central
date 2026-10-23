@@ -5,7 +5,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -159,10 +159,12 @@ def planning(db: Session = Depends(get_db)) -> dict:
             mu, sigma, fonte = PL.portfolio_mu_sigma(db, g["expected_return_aa"])
             g["simulacao"] = {**PL.monte_carlo(g["current"], g["target_amount"], g["months_left"], aporte, mu, sigma),
                               "fonte_risco": fonte}
+    sts = PL.safe_to_spend(db)
     return {"forecast": O.liquidity_forecast(db), "recurring": recurring, "goals": goals,
             "capacity": ov["capacity"], "kpis": ov["kpis"], "budget": O.budget_execution(db, ov["month"]),
-            "plano": cfg, "aporte_simulacao": aporte, "safe_to_spend": PL.safe_to_spend(db),
-            "politica": PL.policy_report(db)}
+            "plano": cfg, "aporte_simulacao": aporte, "safe_to_spend": sts,
+            "politica": PL.policy_report(db, aporte=sts["meta_aporte"]),
+            "aumentos": PL.salary_raises(db)}
 
 
 class PlanSettingsBody(BaseModel):
@@ -170,6 +172,7 @@ class PlanSettingsBody(BaseModel):
     reserva_meses_minima: float | None = None
     limite_fgc: float | None = None
     retorno_esperado_aa: float | None = None
+    aumento_para_aporte: float | None = Field(default=None, ge=0, le=1)
 
 
 @router.put("/plan/settings")

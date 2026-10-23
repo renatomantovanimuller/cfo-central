@@ -3,7 +3,7 @@ import { useApiMutation } from "../hooks/useApiMutation";
 import { QueryState } from "../components/QueryState";
 import { MoneyInput, NumberInput } from "../components/MoneyInput";
 import { formatInputNumber, parseBRL, validateNumber } from "../format";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Trash2 } from "lucide-react";
 import { api } from "../api";
@@ -35,12 +35,13 @@ export default function Planning() {
   const [alvos, setAlvos] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!d) return;
-    setPlano({ meta_aporte_mensal: formatInputNumber(d.plano.meta_aporte_mensal), reserva_meses_minima: formatInputNumber(d.plano.reserva_meses_minima ?? 6) });
+    setPlano({ meta_aporte_mensal: formatInputNumber(d.plano.meta_aporte_mensal), reserva_meses_minima: formatInputNumber(d.plano.reserva_meses_minima ?? 6),
+      aumento: d.plano.aumento_para_aporte == null ? "" : formatInputNumber(Math.round(d.plano.aumento_para_aporte * 100)) });
     setAlvos(Object.fromEntries(d.politica.classes.map((c: any) => [c.classe, c.alvo !== null ? formatInputNumber(Math.round(c.alvo * 1000) / 10) : ""])));
   }, [d]);
   const savePlano = useApiMutation({
-    mutationFn: (p: { aporte: number | null; meses: number }) => api("/api/plan/settings", { method: "PUT", body: {
-      meta_aporte_mensal: p.aporte, reserva_meses_minima: p.meses } }),
+    mutationFn: (p: { aporte: number | null; meses: number; aumento: number | null }) => api("/api/plan/settings", { method: "PUT", body: {
+      meta_aporte_mensal: p.aporte, reserva_meses_minima: p.meses, aumento_para_aporte: p.aumento === null ? null : p.aumento / 100 } }),
     successMessage: "Plano salvo", invalidate: "all",
   });
   const saveAlvos = useApiMutation({
@@ -50,7 +51,8 @@ export default function Planning() {
   if (!d || !plano) return <QueryState q={q} what="o planejamento">{() => null}</QueryState>;
   const vAporte = validateNumber(plano.meta_aporte_mensal, { allowNegative: false });
   const vMeses = validateNumber(plano.reserva_meses_minima, { required: true, min: 0, max: 120 });
-  const planoInvalid = !!(vAporte.error || vMeses.error);
+  const vAumento = validateNumber(plano.aumento, { allowNegative: false, min: 0, max: 100 });
+  const planoInvalid = !!(vAporte.error || vMeses.error || vAumento.error);
   const alvosInvalid = Object.values(alvos).some((v) => validateNumber(v, { min: 0, max: 100 }).error);
   const pol = d.politica;
   const somaAlvos = Object.values(alvos).reduce((a, v) => a + (parseBRL(v) ?? 0), 0);
@@ -74,6 +76,7 @@ export default function Planning() {
               { name: "Entradas", type: "bar", stack: "f", data: f.months.map((m: any) => Math.round(m.income)), itemStyle: { color: cssVar("--ledger") } },
               { name: "Despesas em conta", type: "bar", stack: "o", data: f.months.map((m: any) => -Math.round(m.bank_expenses)), itemStyle: { color: cssVar("--debit"), opacity: .75 } },
               { name: "Fatura do cartão", type: "bar", stack: "o", data: f.months.map((m: any) => -Math.round(m.card_bill)), itemStyle: { color: cssVar("--ochre") } },
+              { name: "Despesas anuais", type: "bar", stack: "o", data: f.months.map((m: any) => -Math.round(m.annual ?? 0)), itemStyle: { color: cssVar("--debit"), opacity: .45 } },
               { name: "Saldo projetado", type: "line", data: f.months.map((m: any) => Math.round(m.end_cash)), symbolSize: 6, lineStyle: { color: cssVar("--ink"), width: 2 }, itemStyle: { color: cssVar("--ink") } },
             ],
           }} />
@@ -96,12 +99,12 @@ export default function Planning() {
         <Panel title="Gastos recorrentes" hint={`${brl(annual, 0)} por ano`} flush>
           <table className="table"><thead><tr><th>Descrição</th><th className="num">Valor</th><th>Próximo</th><th>Situação</th></tr></thead>
             <tbody>{out.map((r: any) => (
-              <tr key={r.id}><td><div className="strong" title={r.description}>{prettyName(r.description)}</div><div className="small muted">{r.occurrences} meses, dia {r.day_of_month}</div></td>
+              <tr key={r.id}><td><div className="strong" title={r.description}>{prettyName(r.description)}</div><div className="small muted">{r.frequency_days >= 300 ? <>anual · provisão {brl(r.expected_amount / 12, 0)}/mês</> : `${r.occurrences} meses, dia ${r.day_of_month}`}</div></td>
                 <td><Money v={-r.expected_amount} /></td><td className="soft">{date(r.next_date)}</td>
                 <td>{r.status === "confirmed" ? <Chip tone="green">confirmado</Chip> : (
                   <span className="toolbar" style={{ flexWrap: "nowrap" }}><button className="btn sm" onClick={() => recur.mutate({ id: r.id, status: "confirmed" })}>Confirmar</button>
                     <button className="btn sm ghost" onClick={() => recur.mutate({ id: r.id, status: "ignored" })}>Ignorar</button></span>)}</td></tr>))}
-              {out.length === 0 && <tr><td colSpan={4} className="muted" style={{ padding: 16 }}>Recorrências aparecem após 3 meses de histórico.</td></tr>}</tbody></table>
+              {out.length === 0 && <tr><td colSpan={4} className="muted" style={{ padding: 16 }}>Recorrências aparecem após 3 meses de histórico; despesas anuais (IPVA, IPTU, seguro, anuidade), assim que aparecem uma vez.</td></tr>}</tbody></table>
         </Panel>
         <Panel title="Receitas recorrentes" flush>
           <table className="table"><thead><tr><th>Origem</th><th className="num">Valor médio</th><th>Próximo</th></tr></thead>
@@ -125,14 +128,22 @@ export default function Planning() {
             <dt>Reserva mínima</dt>
             <dd><NumberInput width={70} required min={0} max={120} ariaLabel="Reserva mínima em meses" value={plano.reserva_meses_minima}
               onChange={(v) => setPlano({ ...plano, reserva_meses_minima: v })} /> <span className="soft small">meses de <Term k="essenciais">custo essencial</Term> guardados em <Term k="liquidez_d1">liquidez D0/D1</Term></span></dd>
+            <dt>Parte de cada aumento</dt>
+            <dd><NumberInput width={70} min={0} max={100} placeholder="—" ariaLabel="Percentual de cada aumento destinado ao aporte" value={plano.aumento}
+              onChange={(v) => setPlano({ ...plano, aumento: v })} /> <span className="soft small">% de cada aumento de renda vai automaticamente para a meta de aporte (vazio = desligado)</span></dd>
           </dl>
-          <button className="btn primary sm" style={{ marginTop: 10 }} disabled={planoInvalid || savePlano.isPending} onClick={() => savePlano.mutate({ aporte: vAporte.value, meses: vMeses.value ?? 6 })}>Salvar plano</button>
+          <button className="btn primary sm" style={{ marginTop: 10 }} disabled={planoInvalid || savePlano.isPending} onClick={() => savePlano.mutate({ aporte: vAporte.value, meses: vMeses.value ?? 6, aumento: vAumento.value })}>Salvar plano</button>
+          <RaiseInfo a={d.aumentos} />
           <h4 style={{ margin: "16px 0 4px" }}>Reserva de emergência</h4>
           <p className={pol.reserva.ok ? "" : "neg"}>
             {brl(pol.reserva.liquido_d0_d1, 0)} em liquidez imediata = <b>{pol.reserva.meses ? pol.reserva.meses.toFixed(1) : "—"} meses</b> de custo essencial
             ({brl(pol.reserva.custo_essencial_mensal, 0)}/mês). Mínimo definido: {pol.reserva.minimo_meses} meses.</p>
+          {pol.reserva.custo_essencial_mensal > 0 && pol.reserva.degraus?.length > 0 && <ol className="reserve-steps">{pol.reserva.degraus.map((g: any) => (
+            <li key={g.nome} className={g.atingido ? "done" : g.nome === pol.reserva.proximo_degrau?.nome ? "current" : ""}>
+              <b>{g.nome}</b> · {g.meses} {g.meses === 1 ? "mês" : "meses"} ({brl(g.valor, 0)})
+              {g.atingido ? <Chip tone="green">atingido</Chip> : <span className="soft small"> faltam {brl(g.falta, 0)}</span>}</li>))}</ol>}
         </Panel>
-        <Panel title="Política de investimentos" hint="alvos são seus; o app só mede o desvio (banda ± 5 p.p.)" flush>
+        <Panel title="Política de investimentos" hint="alvos são seus; o app só mede o desvio (banda: 5 p.p. ou 25% do alvo, o que for menor)" flush>
           <table className="table"><thead><tr><th>Classe</th><th className="num">Atual</th><th className="num">Alvo %</th><th>Situação</th><th className="num">Para o alvo</th></tr></thead>
             <tbody>{pol.classes.map((c: any) => (
               <tr key={c.classe}><td>{c.classe}</td><td className="num">{pct(c.atual, 1)}<div className="small muted">{brl(c.valor, 0)}</div></td>
@@ -145,6 +156,8 @@ export default function Planning() {
             <span className={`small ${somaAlvos > 100.01 ? "neg" : "soft"}`}>Soma dos alvos: {somaAlvos.toFixed(1)}%</span>
             <button className="btn primary sm" disabled={somaAlvos > 100.01 || alvosInvalid || saveAlvos.isPending} onClick={() => saveAlvos.mutate(Object.entries(alvos).filter(([, v]) => v.trim() !== "").map(([k, v]) => ({ asset_class: k, target_pct: (parseBRL(v) ?? 0) / 100 })))}>Salvar alvos</button>
           </div>
+          <AporteDestinos a={pol.aporte} temAlvos={pol.alvos_definidos} />
+          <CalendarioFiscal c={pol.calendario_fiscal} />
         </Panel>
       </div>
 
@@ -196,6 +209,41 @@ function GoalSim({ g }: { g: any }) {
           { name: "Meta", type: "line", data: sim.trajetoria.map(() => g.target_amount), symbol: "none", lineStyle: { width: 1, type: "dashed", color: cssVar("--ochre") } },
         ],
       }} />
+    </div>
+  );
+}
+
+function RaiseInfo({ a }: { a: any }) {
+  if (!a) return null;
+  const last = a.aplicados?.[a.aplicados.length - 1];
+  if (a.detectado && a.fracao == null) return <p className="note" style={{ marginTop: 8 }}>
+    Sua renda recorrente subiu {brl(a.detectado.aumento, 0)}/mês. Defina a parte de cada aumento que vai para o aporte: decidir antes de se acostumar com o dinheiro novo é o que mais faz a poupança crescer.</p>;
+  if (last) return <p className="note" style={{ marginTop: 8 }}>
+    Último aumento: +{brl(last.aumento, 0)}/mês em {monthLabel(last.mes)}{last.acrescimo_aporte ? `; meta de aporte +${brl(last.acrescimo_aporte, 0)}` : ""}.</p>;
+  return null;
+}
+
+function AporteDestinos({ a, temAlvos }: { a: any; temAlvos: boolean }) {
+  if (!a?.valor) return null;
+  return (
+    <div style={{ padding: "4px 18px 12px" }}>
+      <h4 style={{ margin: "8px 0 4px" }}>Para onde vai o aporte deste mês ({brl(a.valor, 0)})</h4>
+      {a.destinos.length === 0
+        ? <p className="note">{temAlvos ? "Carteira já nos alvos: aporte na proporção dos alvos." : "Defina a alocação-alvo acima para ver a divisão sugerida do aporte."}</p>
+        : <dl className="kv">{a.destinos.map((x: any) => <Fragment key={x.destino}><dt>{x.destino}</dt><dd className="num">{brl(x.valor, 0)} <span className="soft small">{x.motivo}</span></dd></Fragment>)}</dl>}
+      <p className="note">Rebalancear pelo aporte evita vender (e pagar IR). Só classes, não produtos.</p>
+    </div>
+  );
+}
+
+function CalendarioFiscal({ c }: { c: any }) {
+  if (!c || (!c.faixas.length && !c.come_cotas)) return null;
+  return (
+    <div style={{ padding: "0 18px 14px" }}>
+      <h4 style={{ margin: "8px 0 4px" }}>Calendário fiscal</h4>
+      {c.faixas.map((f: any) => (
+        <div key={`${f.titulo}-${f.data}`} className="small">{prettyName(f.titulo)}{f.instituicao ? ` (${f.instituicao})` : ""}: em {f.dias} {f.dias === 1 ? "dia" : "dias"} ({date(f.data)}) o IR cai de {pct(f.de, 1)} para {pct(f.para, 1)}. Se precisar resgatar, vale esperar.</div>))}
+      {c.come_cotas && <div className="small">Próximo come-cotas dos fundos: {date(c.come_cotas)}.</div>}
     </div>
   );
 }

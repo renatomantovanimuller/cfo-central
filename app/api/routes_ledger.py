@@ -433,8 +433,20 @@ def reviews(status: str = "open", kind: str | None = None, db: Session = Depends
         q = q.where(ReviewItem.kind == kind)
     sev = {"high": 0, "warn": 1, "info": 2}
     items = db.scalars(q).all()
-    items.sort(key=lambda r: (sev.get(r.severity, 3), -abs((r.data or {}).get("total") or (r.data or {}).get("amount") or 0)))
-    return [{c.name: getattr(r, c.name) for c in ReviewItem.__table__.columns} for r in items]
+    items.sort(key=lambda r: (sev.get(r.severity, 3), -review_impact(r.data)))
+    return [{**{c.name: getattr(r, c.name) for c in ReviewItem.__table__.columns}, "impacto": round(review_impact(r.data), 2)}
+            for r in items]
+
+
+def review_impact(data: dict | None) -> float:
+    """Valor da decisão para os seus números: quanto dinheiro ela classifica × o quanto a classificação atual é
+    incerta. Recorrência mensal vale o ano (a decisão vale para os próximos lançamentos também)."""
+    d = data or {}
+    base = abs(d.get("total") or d.get("amount") or 0.0)
+    if d.get("monthly"):
+        base *= 12
+    conf = d.get("confidence")
+    return base * (1 - min(max(float(conf), 0.0), 1.0)) if conf is not None else base
 
 
 class ReviewAction(BaseModel):

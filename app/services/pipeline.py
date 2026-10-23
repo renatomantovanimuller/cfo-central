@@ -114,8 +114,9 @@ class Pipeline:
                 candidates += rec.pop("review_candidates", [])
                 candidates += system_reviews(s)
                 candidates += portfolio_reviews(s)
-                from app.analytics.plano import policy_reviews
+                from app.analytics.plano import policy_reviews, salary_raise_reviews
                 candidates += policy_reviews(s)
+                candidates += salary_raise_reviews(s)
                 from app.health.checks import health_reviews, run_checks, save_run
                 s.flush()
                 health = run_checks(s)

@@ -238,6 +238,17 @@ Monte Carlo (`plano.monte_carlo`) e bandas. A tela fica no Planejamento, ao lado
 
 ## Roteiro sugerido
 
+> **Fase 1 implementada** (out/2026):
+> - despesas anuais detectadas, provisionadas a 1/12 no "Quanto posso gastar", lançadas no mês do vencimento na
+>   previsão de caixa e avisadas 60 dias antes;
+> - reserva em degraus (colchão → 3 meses → meta);
+> - regra "parte de cada aumento vai para o aporte", com detecção que exige dois meses de salário acima do patamar;
+> - "para onde vai o aporte deste mês" (reserva primeiro, depois as classes abaixo do alvo) com bandas 5/25;
+> - calendário fiscal com a troca de faixa do IR regressivo e o come-cotas;
+> - fila da Revisão ordenada por impacto × incerteza.
+>
+> Testes em `tests/unit/test_fase1_planejamento.py`.
+
 | Fase | Itens | Por quê |
 |---|---|---|
 | **1 — já com os dados atuais** | §3 custos verdadeiros · §2 reserva em degraus · §4 aporte que sobe com aumento · §11 aporte direcionado + IR regressivo · §8.3 revisão por valor da informação | Alto impacto, baixo esforço, sem fonte nova |

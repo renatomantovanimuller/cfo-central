@@ -322,6 +322,11 @@ pre.json { margin: 0; max-height: 280px; overflow: auto; font-size: var(--fs-mic
 .step .s { font-size: var(--fs-label); color: var(--ink-3); margin-top: 2px; }
 .step.done .t { color: var(--ink-2); }
 @media (max-width: 640px) { .step { grid-template-columns: 26px minmax(0, 1fr); } .step > :last-child { grid-column: 2; justify-self: start; } .welcome { padding: 20px 16px; } }
+.reserve-steps { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.reserve-steps li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 10px;
+  border: 1px solid var(--rule); border-radius: var(--r-md); font-size: var(--fs-label); }
+.reserve-steps li.done { color: var(--ink-2); }
+.reserve-steps li.current { border-color: var(--ledger); box-shadow: 0 0 0 1px var(--ledger) inset; }
 .progress { height: 6px; border-radius: 3px; background: var(--band); overflow: hidden; }
 .progress > i { display: block; height: 100%; background: var(--ledger); transition: width .3s; }
 

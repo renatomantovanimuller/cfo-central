@@ -147,7 +147,7 @@ export default function Dashboard() {
 }
 
 function SafeToSpend({ s, onPlan }: { s: any; onPlan: () => void }) {
-  const used = s.renda_prevista > 0 ? (s.gasto_ate_hoje + s.comprometido + s.meta_aporte) / s.renda_prevista : 0;
+  const used = s.renda_prevista > 0 ? (s.gasto_ate_hoje + s.comprometido + (s.provisao ?? 0) + s.meta_aporte) / s.renda_prevista : 0;
   return (
     <section className="panel safe">
       <div className="safe-main">
@@ -165,6 +165,8 @@ function SafeToSpend({ s, onPlan }: { s: any; onPlan: () => void }) {
             {s.meta_aporte_origem === "padrao_limitado" && <div className="note" style={{ whiteSpace: "normal" }}>sugestão limitada ao que sobrou nos últimos meses</div>}</dd>
           <dt>− Gasto até hoje</dt><dd className="num">{brl(s.gasto_ate_hoje)}</dd>
           <dt>− Recorrências a vencer</dt><dd className="num">{brl(s.comprometido)}{s.recorrencias_pendentes.length ? ` (${s.recorrencias_pendentes.length})` : ""}</dd>
+          {s.provisao > 0 && <><dt title="1/12 das despesas anuais previstas, para não virarem surpresa no mês em que vencem">− Provisão de despesas anuais</dt>
+            <dd className="num" title={s.provisoes_anuais.map((p: any) => `${prettyName(p.descricao)}: ${brl(p.anual, 0)} em ${date(p.data)}`).join("\n")}>{brl(s.provisao)} ({s.provisoes_anuais.length})</dd></>}
         </dl>
         <details><summary className="note">Premissas</summary><ul className="assumptions">{s.premissas.map((p: string, i: number) => <li key={i}>{p}</li>)}</ul></details>
       </div>

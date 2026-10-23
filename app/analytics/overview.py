@@ -342,19 +342,26 @@ def liquidity_forecast(s: Session, horizon: int = 6) -> dict:
     inst = {x["month"]: x["amount"] for x in pos["installments"]["by_month"]}
     current_bill = pos["totals"]["card_current"]
     recurring_out = s.scalar(select(func.sum(RecurringRule.expected_amount)).where(
-        RecurringRule.direction == "out", RecurringRule.status != "ignored")) or 0.0
+        RecurringRule.direction == "out", RecurringRule.status != "ignored", RecurringRule.frequency_days < 300)) or 0.0
+    # despesas anuais (IPVA, IPTU, seguro…) não aparecem na mediana mensal: entram no mês do vencimento previsto
+    annual_by_month: dict[str, float] = defaultdict(float)
+    for r in s.scalars(select(RecurringRule).where(RecurringRule.direction == "out", RecurringRule.status != "ignored",
+                                                   RecurringRule.frequency_days >= 300,
+                                                   RecurringRule.next_date >= today)):
+        annual_by_month[month_key(r.next_date)] += r.expected_amount
     out = []
     bal = cash
     for k in range(horizon):
         m = month_add(cur_m, k)
         card_bill = current_bill if k == 0 else inst.get(m, 0.0) + card_new
+        annual = annual_by_month.get(m, 0.0)
         if k == 0:  # mês corrente: só o que falta (esperado − já realizado)
             inflow, outflow = max(0.0, income - received_now), max(0.0, bank_exp - spent_now) + card_bill
         else:
             inflow, outflow = income, bank_exp + card_bill
-        bal = bal + inflow - outflow
+        bal = bal + inflow - outflow - annual
         out.append({"month": m, "income": round(inflow, 2), "bank_expenses": round(outflow - card_bill, 2),
-                    "card_bill": round(card_bill, 2), "end_cash": round(bal, 2)})
+                    "card_bill": round(card_bill, 2), "annual": round(annual, 2), "end_cash": round(bal, 2)})
     return {"start_cash": cash, "months": out, "min_cash": min(x["end_cash"] for x in out) if out else cash,
             "assumptions_basis": {"income_basis": income_basis, "expense_basis": "mediana_meses_completos",
                                   "months": n, "window": hist, "income_monthly": round(income, 2),
@@ -364,6 +371,7 @@ def liquidity_forecast(s: Session, horizon: int = 6) -> dict:
                 f"Despesas em conta: mediana de {n} meses completos ({bank_exp:,.0f}/mês).",
                 f"Cartão: fatura atual no 1º mês; depois parcelas já contratadas + gasto médio à vista ({card_new:,.0f}/mês).",
                 f"Recorrências de saída detectadas somam {recurring_out:,.0f}/mês (já embutidas nas médias).",
+                "Despesas anuais detectadas (IPVA, IPTU, seguro, anuidade…) entram no mês do vencimento previsto.",
                 "Mês corrente: projeta só o que falta (esperado − já recebido/gasto no mês, que está no saldo).",
                 "Não considera aportes/resgates de investimento.",
             ]}

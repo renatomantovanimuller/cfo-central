@@ -278,6 +278,7 @@ def rebuild_ledger(s: Session, actor: str = "system", reason: str = "rebuild") -
             detail=f"De {min(g[0].date for g in group):%d/%m/%Y} a {tx0.date:%d/%m/%Y}. Sugestão atual: {cat0.name} "
                    f"({d0.confidence:.0%} de confiança).",
             data={"count": len(group), "total": total, "category_id": cat0.id, "merchant_id": mid,
+                  "confidence": round(sum(g[2].confidence for g in group) / len(group), 3),
                   "tx_ids": [g[0].id for g in group][:200]}))
     s.flush()
     return {"events": len(decided), "transfers": len(transfer_links), "card_links": len(card_links),

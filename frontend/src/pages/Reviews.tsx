@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { EventDrawer } from "../components/EventDrawer";
 import { CategorySelect, Chip, Empty, EventTypeSelect, Panel, useToast } from "../components/ui";
-import { dateTime } from "../format";
+import { brl, dateTime } from "../format";
 import { dedupeReviews, isDecision, reviewSummary } from "../components/reviewBadge";
 
 const KIND: Record<string, string> = {
@@ -14,6 +14,7 @@ const KIND: Record<string, string> = {
   uncategorized: "Sem categoria", card_payment_unmatched: "Fatura não conciliada", card_not_connected: "Cartão não conectado", override_superseded: "Ajuste substituído", duplicate_account: "Conta duplicada", pending_stale: "Pendente antigo", policy_drift: "Alocação fora da banda", policy_reserve: "Reserva abaixo do mínimo", data_health: "Saúde dos dados",
   recurring_income: "Receita recorrente", anomaly: "Gasto atípico", duplicate: "Possível duplicidade", item_error: "Conexão com erro",
   consent_expiring: "Consentimento vencendo", sync_error: "Falha de sincronização", fgc_limit: "Limite do FGC", exit_no_counterpart: "Saída de investimento sem contrapartida", missing_price: "Sem cotação",
+  annual_upcoming: "Despesa anual chegando", salary_raise: "Aumento de renda", salary_raise_applied: "Aporte ajustado pelo aumento",
 };
 const EXIT_OPTIONS: [string, string][] = [
   ["not_connected_account", "Resgatei para conta não conectada"], ["custody_transferred", "Transferi a custódia"],
@@ -33,10 +34,12 @@ const NOTICE_LINK: Record<string, [string, string]> = {
   item_error: ["/conexoes", "Abrir conexões"], consent_expiring: ["/conexoes", "Renovar consentimento"], sync_error: ["/conexoes", "Abrir conexões"],
   fgc_limit: ["/carteira", "Ver carteira"], missing_price: ["/config", "Conferir ativos"], card_payment_unmatched: ["/cartoes", "Ver cartões"],
   card_not_connected: ["/conexoes", "Conectar o cartão"], duplicate_account: ["/conexoes", "Abrir conexões"], anomaly: ["/razao", "Ver lançamentos"],
+  annual_upcoming: ["/planejamento", "Ver despesas anuais"], salary_raise: ["/planejamento", "Definir no plano"], salary_raise_applied: ["/planejamento", "Ver plano"],
 };
 const NOTICE_HELP: Record<string, string> = {
   data_health: "Conferência automática entre o que o banco informa e o que foi importado. Costuma se resolver sozinha na próxima sincronização; se persistir, veja os detalhes.",
   policy_reserve: "A reserva de emergência está abaixo do mínimo que você definiu no plano.",
+  annual_upcoming: "Despesas que vêm uma vez por ano. O \"quanto posso gastar\" já separa 1/12 delas por mês.",
 };
 
 export default function Reviews() {
@@ -76,7 +79,7 @@ export default function Reviews() {
 
       {decisions.length > 0 && <>
         {isOpen && <div className="section-title"><h3>Decisões rápidas</h3>
-          <span>um clique classifica todos os lançamentos da mesma contraparte, inclusive os futuros</span></div>}
+          <span>um clique classifica todos os lançamentos da mesma contraparte, inclusive os futuros; as que mais mudam seus números vêm primeiro</span></div>}
         {byKind(decisions, DECISION_ORDER).map(([kind, rows]) => (
           <Panel key={kind} title={KIND[kind] ?? kind} hint={`${rows.length}`} flush>{rows.map(row)}</Panel>))}
       </>}
@@ -116,6 +119,8 @@ function ReviewRow({ r, onAct, nav, open, onOpenTx }: { r: any; onAct: (b: any) 
         <div className="t" style={{ whiteSpace: "normal" }}><Chip tone={tone}>{r.severity === "high" ? "urgente" : r.severity === "warn" ? "atenção" : "info"}</Chip> {r.title}</div>
         <div className="s" style={{ marginTop: 3, whiteSpace: "normal" }}>{r.detail}</div>
         {r.merged && <div className="s" style={{ marginTop: 2, whiteSpace: "normal" }}>No histórico: {r.merged.title}</div>}
+        {open && isDecision(r) && r.impacto >= 1 && <div className="note" style={{ marginTop: 2 }}
+          title="Valor envolvido × incerteza da classificação atual (recorrências contam o ano)">impacto estimado {brl(r.impacto, 0)}</div>}
         {open && isExit && (
           <>
             <div className="s" style={{ marginTop: 6, whiteSpace: "normal" }}>
