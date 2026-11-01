@@ -122,8 +122,10 @@ def dre_gerencial(s: Session, month: str | None = None) -> dict:
         "parcelas_proximo_mes": inst_next,
         "comprometimento_parcelas": (inst_next / rec_avg) if rec_avg else None,
         "extraordinarios_ano": round(sum(vals["extraordinarios"].get(m, 0.0) for m in ytd), 2),
+        "eventuais_ano": round(sum(vals["receitas_eventuais"].get(m, 0.0) for m in ytd), 2),
     }
     return {"month": month, "parcial": month == month_key(today_brt()), "media_de": prev6, "ytd_de": ytd, "rows": rows, "indicadores": indicadores,
             "notas": ["Média = 6 meses fechados anteriores; YTD = acumulado do ano até o mês.",
-                      "Resultado recorrente exclui itens extraordinários (herança, doações); a taxa de poupança usa só o recorrente.",
+                      "Resultado recorrente exclui receitas eventuais (bônus, PLR, freela, vendas) e itens extraordinários (herança, "
+                      "doações); a taxa de poupança usa só o recorrente.",
                       "Reserva líquida = caixa + investimentos com liquidez D0/D1."]}

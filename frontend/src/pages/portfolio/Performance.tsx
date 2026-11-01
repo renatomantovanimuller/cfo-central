@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import { api } from "../../api";
-import { Chart, cssVar, kTick, palette } from "../../components/Chart";
+import { Chart, colorFor, cssVar, kTick } from "../../components/Chart";
 import { signTone } from "../../components/MoneyText";
 import { QueryState } from "../../components/QueryState";
 import { Term } from "../../components/Term";
@@ -16,7 +16,7 @@ function P({ v, digits = 1, why }: { v: number | null | undefined; digits?: numb
   return <span className={v < 0 ? "neg" : ""}>{pct(v, digits)}</span>;
 }
 
-export default function Performance() {
+export default function Performance({ onOpen }: { onOpen?: (id: string) => void }) {
   const [period, setPeriod] = useState("12m");
   const [group, setGroup] = useState("por_classe");
   const q = useQuery({ queryKey: ["portfolio-performance"], queryFn: () => api<any>("/api/portfolio/performance") });
@@ -28,9 +28,21 @@ export default function Performance() {
   const ref = d.referencias[period] ?? {};
   const rows: any[] = d[group];
   const refKeys = Object.keys(ref);
-  const recon = d.curva.filter((c: any) => c.reconstruido);
-  const seriesKeys = Object.keys(d.curva[0] ?? {}).filter((k) => !["date", "reconstruido"].includes(k));
+  // curva rebaseada: todas as linhas partem de 0% no início do período escolhido
+  const i0 = Math.max(0, d.curva.findIndex((c: any) => c.date >= (per?.inicio ?? d.inicio)));
+  const curva = d.curva.slice(i0).map((c: any) => {
+    const row: any = { date: c.date, reconstruido: c.reconstruido };
+    for (const k of Object.keys(c)) {
+      if (k === "date" || k === "reconstruido") continue;
+      const base = d.curva.slice(i0).find((x: any) => x[k] !== undefined && x[k] !== null)?.[k];
+      row[k] = c[k] === undefined || c[k] === null || base === undefined ? null : ((1 + c[k] / 100) / (1 + base / 100) - 1) * 100;
+    }
+    return row;
+  });
+  const recon = curva.filter((c: any) => c.reconstruido);
+  const seriesKeys = Array.from(new Set(d.curva.flatMap((c: any) => Object.keys(c)))).filter((k: any) => !["date", "reconstruido"].includes(k)) as string[];
   const classes = Array.from(new Set(d.evolucao.flatMap((e: any) => Object.keys(e).filter((k) => !["date", "reconstruido"].includes(k))))) as string[];
+  const classColor = colorFor(classes);
 
   return (
     <>
@@ -54,15 +66,17 @@ export default function Performance() {
       </section>
 
       <div className="grid g-wide">
-        <Panel title="Carteira contra referências" hint="retorno acumulado desde o início do histórico">
+        <Panel title="Carteira contra referências" hint={`retorno acumulado ${per?.label === "Desde o início" ? "desde o início do histórico" : `no período: ${per?.label?.toLowerCase()}`}, todas partindo de 0%`}>
           <Chart height={300} option={{
+            grid: { right: 92 },
             tooltip: { trigger: "axis", valueFormatter: (v: number) => (v === null || v === undefined ? "—" : `${v.toFixed(1).replace(".", ",")}%`) },
-            xAxis: { type: "category", data: d.curva.map((c: any) => date(c.date)) },
-            yAxis: { type: "value", axisLabel: { formatter: (v: number) => `${v}%` } },
+            xAxis: { type: "category", data: curva.map((c: any) => date(c.date)) },
+            yAxis: { type: "value", axisLabel: { formatter: (v: number) => `${String(v).replace(".", ",")}%` } },
             series: seriesKeys.map((k, i) => ({
-              name: k, type: "line", symbol: "none", connectNulls: false, data: d.curva.map((c: any) => c[k] ?? null),
-              lineStyle: { width: k === "Carteira" ? 2.6 : 1.4, type: k === "CDI" || k === "IPCA" ? "dashed" : "solid" },
-              ...(i === 0 && recon.length ? { markArea: { silent: true, itemStyle: { color: cssVar("--rule"), opacity: 0.35 },
+              name: k, type: "line", symbol: "none", connectNulls: false, data: curva.map((c: any) => c[k] === null ? null : Math.round(c[k] * 100) / 100),
+              lineStyle: { width: k === "Carteira" ? 2.6 : 1.5, type: k === "CDI" || k === "IPCA" ? "dashed" : "solid", color: benchColor(k) },
+              endLabel: { show: k === "Carteira" || k === "CDI", formatter: (p: any) => `${k} ${p.value === null ? "" : `${String(p.value.toFixed(1)).replace(".", ",")}%`}`, color: cssVar("--ink-2"), fontSize: 11 },
+              ...(i === 0 && recon.length ? { markArea: { silent: true, label: { show: false }, itemStyle: { color: cssVar("--rule"), opacity: 0.35 },
                 data: [[{ xAxis: date(recon[0].date), name: "reconstruído" }, { xAxis: date(recon[recon.length - 1].date) }]] } } : {}),
             })),
           }} />
@@ -86,7 +100,7 @@ export default function Performance() {
           <tbody>{rows.map((r: any, i: number) => {
             const x = r.periodos[period] ?? {};
             return (
-              <tr key={`${r.id ?? r.nome}-${i}`}>
+              <tr key={`${r.id ?? r.nome}-${i}`} className={r.id && onOpen ? "clickable" : undefined} onClick={r.id && onOpen ? () => onOpen(String(r.id)) : undefined}>
                 <td><div className="strong">{r.nome}</div>
                   <div className="small muted">{[r.instituicao, group === "por_ativo" ? r.classe : null].filter(Boolean).join(" · ")}
                     {x.inicio_efetivo_posterior ? ` desde ${date(x.inicio)}` : ""}
@@ -113,7 +127,7 @@ export default function Performance() {
           xAxis: { type: "category", data: d.evolucao.map((e: any) => date(e.date)) },
           yAxis: { type: "value", axisLabel: { formatter: kTick } },
           series: classes.map((c, i) => ({ name: c, type: "bar", stack: "v", data: d.evolucao.map((e: any) => e[c] ?? 0),
-            itemStyle: { color: palette()[i % 10], opacity: 1 }, barMaxWidth: 28 })),
+            itemStyle: { color: classColor(c), opacity: 1, borderColor: cssVar("--sheet"), borderWidth: 1 }, barMaxWidth: 28 })),
         }} />
         <p className="note">Meses antes de {date(d.snapshots_desde)} são reconstruídos.</p>
       </Panel>
@@ -129,4 +143,14 @@ export default function Performance() {
         <ul className="assumptions">{d.premissas.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul></details>
     </>
   );
+}
+
+/** Cor fixa por referência: a mesma linha tem a mesma cor em qualquer período. */
+function benchColor(k: string) {
+  if (k === "Carteira") return cssVar("--ink");
+  if (k === "CDI") return cssVar("--viz-prior");
+  if (k === "IPCA") return cssVar("--cat-4");
+  if (k.startsWith("Ibovespa")) return cssVar("--cat-2");
+  if (k.startsWith("S&P")) return cssVar("--cat-1");
+  return cssVar("--cat-7");
 }

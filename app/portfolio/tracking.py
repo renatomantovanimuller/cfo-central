@@ -367,7 +367,7 @@ def performance_report(s: Session, years: int = MAX_YEARS) -> dict:
         "referencias": {p["key"]: bench_for(p["i0"]) for p in periods},
         "total": group_rows(None)[0],
         "por_instituicao": group_rows("instituicao"), "por_classe": group_rows("classe"), "por_ativo": asset_rows,
-        "curva": curve, "evolucao": evol,
+        "curva": curve, "evolucao": evol, "aportes": flow_evolution(days, V, F, snap_idx),
         "fluxos_inferidos": sorted(inferred, key=lambda x: x["data"], reverse=True)[:40],
         "notas": sorted(notes),
         "premissas": [
@@ -380,3 +380,95 @@ def performance_report(s: Session, years: int = MAX_YEARS) -> dict:
             "A janela começa na movimentação mais antiga que a Pluggy entrega (cerca de 12 meses).",
         ],
     }
+
+
+def flow_evolution(days: list[date], V: list[float], F: list[float], snap_idx: int = 0) -> list[dict]:
+    """Fim de cada mês: valor, saldo de partida, aportes líquidos acumulados e rendimento acumulado
+    (valor − partida − aportes), mais o aporte e o rendimento do próprio mês."""
+    out, cum, prev_v, month_flow = [], 0.0, V[0] if V else 0.0, 0.0
+    n = len(days)
+    for i, d in enumerate(days):
+        if i:
+            cum += F[i]
+            month_flow += F[i]
+        if i == n - 1 or (d + timedelta(days=1)).day == 1:
+            out.append({"date": d.isoformat(), "valor": round(V[i], 2), "partida": round(V[0], 2),
+                        "aportes_acumulados": round(cum, 2), "rendimento_acumulado": round(V[i] - V[0] - cum, 2),
+                        "aporte_mes": round(month_flow, 2), "rendimento_mes": round(V[i] - prev_v - month_flow, 2),
+                        "parcial": i == n - 1 and (d + timedelta(days=1)).day != 1, "reconstruido": i < snap_idx})
+            prev_v, month_flow = V[i], 0.0
+    return out
+
+
+def holding_detail(s: Session, hid: str, years: int = MAX_YEARS) -> dict:
+    """Página de um ativo: valor no tempo, aportes × rendimento, retorno por período, movimentações,
+    cotação, proventos e lotes (renda variável)."""
+    data = load(s, years)
+    if not data:
+        return {"available": False, "reason": "sem investimentos"}
+    days, m, meta = data["days"], data["market"], data["meta"]
+    h = next((x for x in data["holdings"] if str(x.id) == str(hid)), None)
+    if h is None:
+        return {"available": False, "reason": "ativo não encontrado"}
+    n = len(days)
+    ser = T.build_series(h, days, m, {})
+    V = [x or 0.0 for x in ser.v]
+    F = [x or 0.0 for x in ser.f]
+    snap0 = data["first_snapshot"]
+    snap_idx = (snap0 - days[0]).days if snap0 and snap0 >= days[0] else 0
+    recon_until = max(snap_idx, ser.inferred_until or 0)
+    cdi = T.dense_rate(m.cdi, days)
+
+    periods = []
+    for key, label in PERIODS:
+        i0, short = _period_index(days, key)
+        st = T.period_stats(days, V, F, i0, n - 1, recon_until)
+        if st.get("inicio"):
+            i_eff = (date.fromisoformat(st["inicio"]) - days[0]).days
+            st["pct_cdi"] = T.pct_of_cdi(st.get("twr"), T.accumulated(cdi, i_eff, n - 1), n - 1 - i_eff)
+            st["cdi"] = T.accumulated(cdi, i_eff, n - 1)
+        periods.append({"key": key, "label": label, "janela_menor": short, **{k: _num(v) for k, v in st.items()}})
+
+    first = ser.start if ser.start is not None else 0
+    step = max(1, (n - first) // 240)
+    curve = [{"date": days[i].isoformat(), "valor": round(V[i], 2), "reconstruido": i < recon_until}
+             for i in range(first, n) if (i - first) % step == 0 or i == n - 1]
+    price = []
+    if h.symbol and h.symbol in m.prices:
+        px = T.dense_price(m.prices[h.symbol], days)
+        price = [{"date": days[i].isoformat(), "close": round(px[i], 4)}
+                 for i in range(first, n) if px[i] is not None and ((i - first) % step == 0 or i == n - 1)]
+
+    flows = [{"data": t.d.isoformat(), "valor": round(t.flow, 2), "quantidade": round(t.dq, 6) if t.dq else None,
+              "origem": t.source} for t in sorted(h.trades, key=lambda t: t.d, reverse=True)]
+    inferred = [{"data": d.isoformat(), "valor": round(v, 2), "motivo": why} for d, v, why in ser.inferred_flows]
+
+    from app.portfolio.service import positions
+    pos = next((p for p in positions(s) if str(p["id"]) == str(hid)), None)
+    code = (pos or {}).get("code") or ""
+    income, lots = [], None
+    if h.kind == T.RV and code:
+        from app.portfolio.income import received
+        from app.portfolio.realized import equity_lots
+        income = [{**r, "data": r["data"].isoformat() if hasattr(r["data"], "isoformat") else r["data"]}
+                  for r in received(s, 36) if (r.get("ticker") or "").upper() == code.upper()]
+        lots = next((x for x in equity_lots(s)["ativos"] if str(x.get("investment_id")) == str(hid)), None)
+
+    return {
+        "available": True, "id": h.id, "nome": h.label, "tipo": "Renda variável" if h.kind == T.RV else "Renda fixa",
+        "indexador": h.index, "taxa": h.rate, "simbolo": h.symbol, "encerrado": V[-1] <= 0.005,
+        **{k: meta.get(h.id, {}).get(k) for k in ("classe", "instituicao")},
+        "posicao": P_clean(pos) if pos else None,
+        "inicio": days[first].isoformat(), "fim": days[-1].isoformat(),
+        "periodos": periods, "curva": curve, "cotacao": price,
+        "aportes": flow_evolution(days[first:], V[first:], F[first:], max(0, recon_until - first)),
+        "movimentacoes": flows, "fluxos_inferidos": inferred, "proventos": income, "lotes": lots,
+        "notas": sorted(set(ser.notes)),
+        "premissas": ["Retorno ponderado no tempo (TWR), bruto de IR/IOF.",
+                      "Trechos antes do primeiro saldo coletado são reconstruídos e aparecem marcados."],
+    }
+
+
+def P_clean(d: dict) -> dict:
+    from app.portfolio.service import _clean
+    return _clean(d)

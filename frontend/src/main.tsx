@@ -10,6 +10,7 @@ import { Layout, MonthProvider } from "./components/Layout";
 import { ToastProvider } from "./components/ui";
 import Dashboard from "./pages/Dashboard";
 import Ledger from "./pages/Ledger";
+import Spending from "./pages/Spending";
 import Dre from "./pages/Dre";
 import DreGerencial from "./pages/DreGerencial";
 import Dfc from "./pages/Dfc";
@@ -25,6 +26,7 @@ import Connections from "./pages/Connections";
 import SettingsPage from "./pages/Settings";
 import SaudeDados from "./pages/SaudeDados";
 import ImpostoRenda from "./pages/ImpostoRenda";
+import { registerServiceWorker } from "./push";
 
 const qc = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1, staleTime: 15_000 } } });
 
@@ -80,6 +82,7 @@ function Gate() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Dashboard />} />
+          <Route path="gastos" element={<Spending />} />
           <Route path="dre" element={<Dre />} />
           <Route path="dre-gerencial" element={<DreGerencial />} />
           <Route path="dfc" element={<Dfc />} />
@@ -117,4 +120,4 @@ const render = () => ReactDOM.createRoot(document.getElementById("root")!).rende
 );
 
 if (DEMO) installDemo().then(render);
-else render();
+else { render(); registerServiceWorker(); }

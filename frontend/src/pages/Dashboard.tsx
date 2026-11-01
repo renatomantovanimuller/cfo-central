@@ -2,7 +2,8 @@ import { QueryState } from "../components/QueryState";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { Chart, cssVar, kTick } from "../components/Chart";
+import { Chart, colorFor, cssVar, kTick } from "../components/Chart";
+import { signTone } from "../components/MoneyText";
 import { useMonth } from "../components/Layout";
 import { Delta, Empty, Money, Panel } from "../components/ui";
 import { ProvisionalBanner, SetupChecklist, Welcome } from "../components/Onboarding";
@@ -17,6 +18,8 @@ export default function Dashboard() {
   const q = useQuery({ queryKey: ["overview", month], queryFn: () => api<any>(`/api/overview?month=${month}`) });
   const hist = useQuery({ queryKey: ["bp-history"], queryFn: () => api<any[]>("/api/balance/history?months=12") });
   const reviews = useQuery({ queryKey: ["reviews-count"], queryFn: () => api<any[]>("/api/reviews") });
+  const sp = useQuery({ queryKey: ["spending", month, 1, ""], queryFn: () => api<any>(`/api/spending?end=${month}&months=1`) });
+  const perf = useQuery({ queryKey: ["portfolio-performance"], queryFn: () => api<any>("/api/portfolio/performance") });
   const ob = useOnboarding();
   const d = q.data;
   if (ob.data && ob.data.events === 0) return <Welcome />;
@@ -29,6 +32,10 @@ export default function Dashboard() {
   const series = d.series as any[];
   const hasData = series.some((s) => s.receita_liquida || s.despesas);
   const rv = reviewSummary(reviews.data);
+  const spCats: any[] = (sp.data?.categories ?? []).filter((c: any) => c.value > 0);
+  const catColor = colorFor(spCats.slice(0, 8).map((c) => c.name));
+  const nwPrev = hist.data && hist.data.length > 1 ? hist.data[hist.data.length - 2].net_worth : null;
+  const nwDelta = nwPrev !== null ? t.net_worth - nwPrev : null;
 
   return (
     <>
@@ -38,6 +45,8 @@ export default function Dashboard() {
         <div className="figure">
           <div className="lbl"><Term k="patrimonio">Patrimônio líquido hoje</Term></div>
           <div className={`big ${t.net_worth < 0 ? "neg" : ""}`}>{brl(t.net_worth)}</div>
+          {nwDelta !== null && Math.abs(nwDelta) >= 1 && <div className="small" style={{ marginTop: -4, marginBottom: 6 }}>
+            <Money v={nwDelta} digits={0} tone={signTone(nwDelta)} /> <span className="soft">desde o fechamento anterior{nwPrev ? ` (${nwDelta > 0 ? "+" : ""}${pct(nwDelta / Math.abs(nwPrev), 1)})` : ""}</span></div>}
           <div className="soft small"><Term k="liquidez">Disponível em até 1 dia</Term>: {brl(t.liquid_net_worth)}</div>
           {hist.data && hist.data.length > 1 && (
             <Chart height={120} option={{
@@ -71,12 +80,13 @@ export default function Dashboard() {
       </section>
 
       <section className="panel strip" aria-label={`Resultado de ${monthLong(month)}`}>
-        <div><div className="lbl"><Term k="receita_liquida">Receita líquida</Term></div><div className="val num" style={{ textAlign: "left" }}>{brl(k.current.receita_liquida)}</div>
-          <div className="sub"><Delta cur={k.current.receita_liquida} ref_={k.previous.receita_liquida} /> sobre {monthLabel(series[series.length - 2]?.month ?? month)}</div></div>
+        <div><div className="lbl"><Term k="receita_liquida">Receita recorrente</Term></div><div className="val num" style={{ textAlign: "left" }}>{brl(k.current.receita_liquida)}</div>
+          <div className="sub"><Delta cur={k.current.receita_liquida} ref_={k.previous.receita_liquida} /> sobre {monthLabel(series[series.length - 2]?.month ?? month)}
+            {k.current.eventuais ? <> · + {compact(k.current.eventuais)} eventual</> : null}</div></div>
         <div><div className="lbl">Despesas</div><div className="val num" style={{ textAlign: "left" }}>{brl(k.current.despesas)}</div>
           <div className="sub"><Delta cur={k.current.despesas} ref_={k.previous.despesas} invert /> · média 6m {compact(k.avg6.despesas)}</div></div>
         <div><div className="lbl"><Term k="resultado_recorrente">Sobra do mês</Term></div><div className={`val num ${k.current.resultado < 0 ? "neg" : "pos"}`} style={{ textAlign: "left" }}>{brl(k.current.resultado)}</div>
-          <div className="sub">média 6m {compact(k.avg6.resultado)}{k.current.extraordinarios ? ` · + ${compact(k.current.extraordinarios)} extraordinário` : ""}</div></div>
+          <div className="sub">média 6m {compact(k.avg6.resultado)}{k.current.eventuais ? ` · + ${compact(k.current.eventuais)} eventual` : ""}{k.current.extraordinarios ? ` · + ${compact(k.current.extraordinarios)} extraordinário` : ""}</div></div>
         <div><div className="lbl"><Term k="poupanca">Taxa de poupança</Term></div><div className="val" >{pct(k.current.taxa_poupanca, 0)}</div>
           <div className="sub">média 6m {pct(k.avg6.taxa_poupanca, 0)}</div></div>
         <div><div className="lbl"><Term k="aporte">Investido no mês</Term></div><div className="val num" style={{ textAlign: "left" }}>{brl(k.invested_net)}</div>
@@ -96,25 +106,34 @@ export default function Dashboard() {
             xAxis: { type: "category", data: series.map((s) => monthAxisLabel(s.month)) },
             yAxis: { type: "value", axisLabel: { formatter: kTick } },
             series: [
-              { name: "Receita líquida", type: "bar", data: series.map((s) => ({ value: Math.round(s.receita_liquida), ...(isPartialMonth(s.month) && { itemStyle: { opacity: PARTIAL_OPACITY } }) })), itemStyle: { color: cssVar("--ledger"), borderRadius: [2, 2, 0, 0] }, barGap: "8%" },
+              { name: "Receita recorrente", type: "bar", stack: "rec", data: series.map((s) => ({ value: Math.round(s.receita_liquida), ...(isPartialMonth(s.month) && { itemStyle: { opacity: PARTIAL_OPACITY } }) })), itemStyle: { color: cssVar("--ledger") }, barGap: "8%" },
+              ...(series.some((s) => s.eventuais) ? [{ name: "Bônus, PLR e outras eventuais", type: "bar", stack: "rec", data: series.map((s) => Math.round(s.eventuais ?? 0)),
+                itemStyle: { color: cssVar("--ledger"), opacity: 0.45, borderRadius: [2, 2, 0, 0] } }] : []),
               { name: "Despesas", type: "bar", data: series.map((s) => ({ value: Math.round(s.despesas), ...(isPartialMonth(s.month) && { itemStyle: { opacity: PARTIAL_OPACITY * .8 } }) })), itemStyle: { color: cssVar("--debit"), opacity: .82, borderRadius: [2, 2, 0, 0] } },
               { name: "Resultado", type: "line", data: series.map((s) => Math.round(s.resultado)), symbolSize: 5, lineStyle: { width: 2, color: cssVar("--ink") }, itemStyle: { color: cssVar("--ink") } },
             ],
           }} />
         </Panel>
-        <Panel title="Para onde foi o dinheiro" hint={monthLong(month)}>
-          {d.top_categories.length === 0 ? <p className="muted">Sem despesas neste mês.</p> :
-            d.top_categories.map((c: any) => (
-              <div key={c.id} className="bar-row" style={{ cursor: "pointer", padding: "4px 0" }} onClick={() => nav(`/razao?category=${c.id}&month=${month}`)}>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.name}>{c.name}</span>
-                <div className="bar"><i style={{ width: `${(c.value / d.top_categories[0].value) * 100}%` }} /></div>
-                <Money v={c.value} colored={false} />
-              </div>
-            ))}
+        <Panel title="Para onde foi o dinheiro" hint={`${monthLong(month)}, contra o mês anterior`}
+          tools={<button className="btn sm ghost" onClick={() => nav("/gastos")}>Abrir Gastos →</button>}>
+          {!sp.data ? <QueryState q={sp} what="as categorias" layout="panel">{() => null}</QueryState>
+            : spCats.length === 0 ? <p className="muted">Sem despesas neste mês.</p> : <>
+            <div className="stack-bar" role="img" aria-label="Divisão do gasto do mês por categoria">
+              {spCats.map((c) => <i key={c.id} title={`${c.name}: ${brl(c.value, 0)}`} style={{ flexGrow: c.value, background: catColor(c.name) }} />)}</div>
+            {spCats.slice(0, 7).map((c) => (
+              <button key={c.id} className="cat-row dash" onClick={() => nav(`/razao?category=${c.id}&month=${month}`)}>
+                <i className="sw" style={{ background: catColor(c.name) }} />
+                <span className="nm" title={c.name}>{c.name}</span>
+                <span className="num">{brl(c.value, 0)}</span>
+                <span className="num soft small">{pct(c.value / sp.data.totals.value, 0)}</span>
+                <DeltaSpend cur={c.value} prev={c.prev} />
+              </button>))}
+            {spCats.length > 7 && <p className="note">+ {spCats.length - 7} categorias somando {brl(spCats.slice(7).reduce((a, c) => a + c.value, 0), 0)}.</p>}
+          </>}
         </Panel>
       </div>}
 
-      {hasData && <div className="grid g2">
+      {hasData && <div className="grid g3">
         <Panel title="Ritmo de gastos" hint="acumulado no mês contra o mês anterior">
           <Chart height={240} option={{
             tooltip: { trigger: "axis", valueFormatter: (v: number) => brl(v) },
@@ -127,6 +146,7 @@ export default function Dashboard() {
             ],
           }} />
         </Panel>
+        <PortfolioCard perf={perf.data} onOpen={() => nav("/carteira")} />
         <Panel title="Maiores comerciantes" hint={monthLong(month)}>
           {d.top_merchants.length === 0 ? <p className="muted">Sem gastos identificados.</p> : d.top_merchants.map((m: any) => (
             <div key={m.id} className="list-row" style={{ cursor: "pointer" }} onClick={() => nav(`/razao?merchant=${m.id}&month=${month}`)}>
@@ -184,5 +204,39 @@ function Bar({ label, v, max, soft, debit }: { label: string; v: number; max: nu
       <div className={`bar ${debit ? "debit" : ""}`}><i style={{ width: `${Math.min(100, (Math.abs(v) / max) * 100)}%`, opacity: soft ? .7 : 1 }} /></div>
       <Money v={v} />
     </div>
+  );
+}
+
+function DeltaSpend({ cur, prev }: { cur: number; prev: number }) {
+  if (!prev || Math.abs(prev) < 1) return <span className="muted small">novo</span>;
+  const d = (cur - prev) / Math.abs(prev);
+  return <span className={`small ${d > 0.005 ? "neg" : d < -0.005 ? "pos" : "muted"}`}>{d > 0 ? "+" : d < 0 ? "−" : ""}{Math.abs(d * 100).toFixed(0)}%</span>;
+}
+
+/** Resumo da carteira no painel: valor, retorno de 12 meses contra o CDI e evolução desde o início. */
+function PortfolioCard({ perf, onOpen }: { perf: any; onOpen: () => void }) {
+  if (!perf?.available) return (
+    <Panel title="Carteira"><p className="muted">{perf ? perf.reason : "Carregando…"}</p></Panel>);
+  const y = perf.total.periodos["12m"] ?? {}, all = perf.total.periodos["inicio"] ?? {};
+  const cdi = perf.referencias["12m"]?.CDI;
+  const curve = perf.curva as any[];
+  return (
+    <Panel title="Carteira" tools={<button className="btn sm ghost" onClick={onOpen}>Abrir →</button>}>
+      <div className="evo-sum" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+        <div><span>Investido hoje</span><b><Money v={perf.total.valor} digits={0} /></b></div>
+        <div><span><Term k="twr">Retorno 12m</Term></span><b className={(y.twr ?? 0) < 0 ? "neg" : ""}>{pct(y.twr, 1)}</b></div>
+        <div><span>CDI 12m</span><b className="soft">{pct(cdi, 1)}</b></div>
+        <div><span>Ganho desde {date(all.inicio)}</span><b><Money v={all.ganho} digits={0} tone={signTone(all.ganho)} /></b></div>
+      </div>
+      {curve.length > 1 && <Chart height={110} option={{
+        legend: false, grid: { left: 0, right: 0, top: 8, bottom: 0, containLabel: false },
+        tooltip: { trigger: "axis", valueFormatter: (v: number) => (v == null ? "—" : `${v.toFixed(1).replace(".", ",")}%`) },
+        xAxis: { type: "category", data: curve.map((c) => date(c.date)), show: false },
+        yAxis: { type: "value", show: false, scale: true },
+        series: [{ name: "Carteira", type: "line", symbol: "none", data: curve.map((c) => c.Carteira), lineStyle: { width: 2, color: cssVar("--ink") } },
+          { name: "CDI", type: "line", symbol: "none", data: curve.map((c) => c.CDI), lineStyle: { width: 1.5, type: "dashed", color: cssVar("--viz-prior") } }],
+      }} />}
+      <p className="note">Linha cheia: carteira; tracejada: CDI, desde o início do histórico.</p>
+    </Panel>
   );
 }

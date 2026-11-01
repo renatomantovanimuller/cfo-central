@@ -63,7 +63,7 @@ export const EVENT_LABELS: Record<string, string> = {
 };
 export const RULE_SOURCE: Record<string, string> = {
   manual: "ajuste manual", rule: "sua regra", structural: "conciliação", merchant: "comerciante aprendido",
-  pluggy_map: "categoria Pluggy", heuristic: "palavra-chave", default: "sem regra", modelo: "classificador treinado",
+  pluggy_map: "categoria Pluggy", heuristic: "palavra-chave", default: "sem regra", modelo: "classificador treinado", benefit: "benefício informado",
 };
 
 /* ---------- entrada de valores (pt-BR) ---------- */

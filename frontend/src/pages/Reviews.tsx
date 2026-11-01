@@ -5,7 +5,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { EventDrawer } from "../components/EventDrawer";
-import { CategorySelect, Chip, Empty, EventTypeSelect, Panel, useToast } from "../components/ui";
+import { CategoryPicker } from "../components/CategoryPicker";
+import { Chip, Empty, EventTypeSelect, Panel, useToast } from "../components/ui";
 import { dateTime } from "../format";
 import { dedupeReviews, isDecision, reviewSummary } from "../components/reviewBadge";
 
@@ -132,7 +133,7 @@ function ReviewRow({ r, onAct, nav, open, onOpenTx }: { r: any; onAct: (b: any) 
           <div className="toolbar" style={{ marginTop: 8 }}>
             {(QUICK[r.kind] ?? []).map(([l, c, e]) => (
               <button key={l} className="btn sm" onClick={() => onAct({ action: "resolve", category_id: c, event_type: e })}>{l}</button>))}
-            <CategorySelect value={cat} onChange={setCat} />
+            <CategoryPicker value={cat} onChange={setCat} />
             <EventTypeSelect value={et} onChange={setEt} placeholder="Tipo (opcional)" />
             <button className="btn sm primary" disabled={!cat && !et} onClick={() => onAct({ action: "resolve", category_id: cat || null, event_type: et || null })}>Aplicar</button>
           </div>

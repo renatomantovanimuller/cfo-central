@@ -115,7 +115,8 @@ def system_reviews(s: Session) -> list[ReviewCandidate]:
     # duplicidade: mesma conta, mesmo valor, mesma descrição, mesma data, ids diferentes
     dup = s.execute(select(FinancialEvent.account_id, FinancialEvent.competence_date, FinancialEvent.amount,
                            FinancialEvent.description, FinancialEvent.source_id)
-                    .where(FinancialEvent.is_removed.is_(False), FinancialEvent.competence_date >= since)).all()
+                    .where(FinancialEvent.is_removed.is_(False), FinancialEvent.event_type != "IGNORE",
+                           FinancialEvent.competence_date >= since)).all()
     groups: dict[tuple, list[str]] = defaultdict(list)
     for r in dup:
         groups[(r.account_id, r.competence_date, round(r.amount, 2), (r.description or "").lower())].append(r.source_id)

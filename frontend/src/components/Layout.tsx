@@ -6,7 +6,7 @@ import { reviewSummary } from "./reviewBadge";
 import { useOnboarding } from "../hooks/useOnboarding";
 import {
   ArrowLeftRight, BookOpen, ClipboardList, CalendarRange, ChevronLeft, ChevronRight, CreditCard, Download, Eye, EyeOff, FileSpreadsheet, Gauge,
-  Inbox, Landmark, Layers, LineChart, ListTree, LogOut, Menu, PlugZap, Receipt, RefreshCw, Scale, Settings2, ShieldCheck, Store, Wand2, X,
+  Inbox, Landmark, Layers, LineChart, ListTree, LogOut, Menu, PieChart, PlugZap, Receipt, RefreshCw, Scale, Settings2, ShieldCheck, Store, Wand2, X,
 } from "lucide-react";
 import { api } from "../api";
 import { addMonth, dateTime, monthLabel, monthLong, thisMonth } from "../format";
@@ -14,17 +14,34 @@ import { useToast } from "./ui";
 import { togglePrivate, usePrivacy } from "../privacy";
 import { DEMO } from "../demo";
 
-const MonthCtx = createContext<{ month: string; setMonth: (m: string) => void }>({ month: thisMonth(), setMonth: () => {} });
+/** Janela de leitura: quantos meses terminando no mês escolhido ("ano" = do início do ano até ele). */
+export type Win = "1" | "3" | "6" | "12" | "ano";
+export const WINDOWS: [Win, string, string][] = [["1", "Mês", "só o mês"], ["3", "3m", "últimos 3 meses"],
+  ["6", "6m", "últimos 6 meses"], ["12", "12m", "últimos 12 meses"], ["ano", "Ano", "do início do ano até o mês"]];
+export const winMonths = (w: Win, month: string) => (w === "ano" ? Number(month.slice(5, 7)) : Number(w));
+
+type PeriodState = { month: string; setMonth: (m: string) => void; win: Win; setWin: (w: Win) => void; months: number; start: string };
+const MonthCtx = createContext<PeriodState>({ month: thisMonth(), setMonth: () => {}, win: "1", setWin: () => {}, months: 1, start: thisMonth() });
 export const useMonth = () => useContext(MonthCtx);
+export const usePeriod = useMonth;
+
+const WIN_KEY = "cfo.janela";
+function readWin(): Win {
+  try { const v = localStorage.getItem(WIN_KEY); return WINDOWS.some(([k]) => k === v) ? (v as Win) : "1"; } catch { return "1"; }
+}
 
 export function MonthProvider({ children }: { children: ReactNode }) {
   const [month, setMonth] = useState(thisMonth());
-  return <MonthCtx.Provider value={{ month, setMonth }}>{children}</MonthCtx.Provider>;
+  const [win, setWinState] = useState<Win>(readWin);
+  const setWin = (w: Win) => { setWinState(w); try { localStorage.setItem(WIN_KEY, w); } catch { /* armazenamento indisponível */ } };
+  const months = winMonths(win, month);
+  return <MonthCtx.Provider value={{ month, setMonth, win, setWin, months, start: addMonth(month, -(months - 1)) }}>{children}</MonthCtx.Provider>;
 }
 
 // ordem pensada para o uso diário: primeiro o que pede ação (Revisão), depois os números, por fim a configuração
 const NAV: { group: string; items: { to: string; label: string; icon: any; badge?: boolean; hint?: string }[] }[] = [
   { group: "Visão", items: [{ to: "/", label: "Painel", icon: Gauge }, { to: "/revisao", label: "Revisão", icon: Inbox, badge: true },
+    { to: "/gastos", label: "Gastos", icon: PieChart, hint: "Para onde vai o dinheiro: categorias, calendário, comerciantes" },
     { to: "/razao", label: "Lançamentos", icon: Layers }] },
   { group: "Resultados", items: [
     { to: "/dre", label: "Resultado do mês", icon: BookOpen, hint: "DRE: receitas menos despesas, mês a mês" },
@@ -41,16 +58,22 @@ const NAV: { group: string; items: { to: string; label: string; icon: any; badge
     { to: "/conexoes", label: "Conexões", icon: PlugZap }, { to: "/saude", label: "Saúde dos dados", icon: ShieldCheck }, { to: "/config", label: "Configurações", icon: Settings2 } ] },
 ];
 
+/** Atalhos do celular: o uso diário em quatro toques; o resto fica no menu "Mais". */
+const TABBAR = [{ to: "/", label: "Painel", icon: Gauge }, { to: "/gastos", label: "Gastos", icon: PieChart },
+  { to: "/carteira", label: "Carteira", icon: LineChart }, { to: "/revisao", label: "Revisão", icon: Inbox }];
+
 const TITLES: Record<string, string> = {
-  "/": "Painel", "/dre": "Resultado do mês (DRE)", "/dre-gerencial": "Resultado gerencial", "/dfc": "Fluxo de caixa", "/balanco": "Balanço patrimonial",
+  "/": "Painel", "/gastos": "Gastos", "/dre": "Resultado do mês (DRE)", "/dre-gerencial": "Resultado gerencial", "/dfc": "Fluxo de caixa", "/balanco": "Balanço patrimonial",
   "/razao": "Lançamentos", "/categorias": "Categorias e orçamento", "/comerciantes": "Comerciantes", "/regras": "Regras de classificação",
   "/revisao": "Revisão", "/carteira": "Carteira", "/cartoes": "Cartões", "/planejamento": "Planejamento",
   "/conexoes": "Conexões", "/config": "Configurações", "/saude": "Saúde dos dados", "/imposto-de-renda": "Imposto de renda",
 };
+/** Telas que leem uma janela de meses (as demais usam só o mês). */
+const WINDOWED = new Set(["/gastos", "/razao"]);
 const MONTHLESS = new Set(["/balanco", "/regras", "/revisao", "/carteira", "/cartoes", "/planejamento", "/conexoes", "/config", "/comerciantes", "/saude", "/imposto-de-renda"]);
 
 export function Layout() {
-  const { month, setMonth } = useMonth();
+  const { month, setMonth, win, setWin, start } = useMonth();
   const loc = useLocation();
   const qc = useQueryClient();
   const toast = useToast();
@@ -125,10 +148,17 @@ export function Layout() {
           {!MONTHLESS.has(loc.pathname) && (
             <div className="segmented month-picker" role="group" aria-label="Mês">
               <button onClick={() => setMonth(addMonth(month, -1))} aria-label="Mês anterior"><ChevronLeft size={15} /></button>
-              <button className="on" style={{ minWidth: 132 }} title="Voltar para o mês atual" onClick={() => setMonth(thisMonth())}>{monthLong(month)}</button>
+              <button className="on" style={{ minWidth: 150 }} title="Voltar para o mês atual" onClick={() => setMonth(thisMonth())}>{monthLong(month)}</button>
               <button onClick={() => setMonth(addMonth(month, 1))} aria-label="Próximo mês" disabled={month >= thisMonth()}><ChevronRight size={15} /></button>
             </div>
           )}
+          {WINDOWED.has(loc.pathname) && (
+            <div className="segmented window-picker" role="group" aria-label="Janela de meses">
+              {WINDOWS.map(([k, l, tip]) => <button key={k} className={win === k ? "on" : ""} aria-pressed={win === k} title={tip}
+                onClick={() => setWin(k)}>{l}</button>)}
+            </div>
+          )}
+          {WINDOWED.has(loc.pathname) && win !== "1" && <span className="sync-line range-line">{monthLabel(start)} a {monthLabel(month)}</span>}
           <div className="spacer" />
           <span className="sync-line">
             <span className={`dot ${running ? "run" : noConnection ? "idle" : ""}`} />
@@ -147,6 +177,16 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+      <nav className="tabbar" aria-label="Atalhos">
+        {TABBAR.map((t) => (
+          <NavLink key={t.to} to={t.to} end={t.to === "/"}>
+            <t.icon size={20} strokeWidth={1.8} />
+            <span>{t.label}</span>
+            {t.to === "/revisao" && reviewCount > 0 && <b className="tab-count" aria-label={`${reviewCount} pendentes`}>{reviewCount}</b>}
+          </NavLink>
+        ))}
+        <button onClick={() => setMenuOpen(true)} aria-label="Mais telas" aria-expanded={menuOpen}><Menu size={20} strokeWidth={1.8} /><span>Mais</span></button>
+      </nav>
     </div>
   );
 }

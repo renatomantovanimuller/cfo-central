@@ -92,17 +92,6 @@ export function CategoryOptions({ cats, includePatrimonial = true }: { cats: Cat
   );
 }
 
-export function CategorySelect({ value, onChange, className = "select", placeholder, includePatrimonial = true }:
-  { value?: string | null; onChange: (v: string) => void; className?: string; placeholder?: string; includePatrimonial?: boolean }) {
-  const { data = [] } = useCategories();
-  return (
-    <select className={className} value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
-      <option value="">{placeholder ?? "Categoria…"}</option>
-      <CategoryOptions cats={data} includePatrimonial={includePatrimonial} />
-    </select>
-  );
-}
-
 export function EventTypeSelect({ value, onChange, className = "select", placeholder = "Tipo de evento…" }:
   { value?: string | null; onChange: (v: string) => void; className?: string; placeholder?: string }) {
   return (

@@ -6,10 +6,22 @@ export function cssVar(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-/** Paleta derivada dos tokens: tinta verde, azul, ocre, ardósia, vermelho e variações. */
+/** Paleta categórica validada (tokens --cat-1…8), em ordem fixa. Do 9º item em diante, use "Outros" (--cat-other). */
 export function palette() {
-  return [cssVar("--ledger"), cssVar("--blue"), cssVar("--ochre"), cssVar("--slate"), cssVar("--debit"),
-    "#5f8f7f", "#8a6fb0", "#3f8fa6", "#a3785a", "#7a8c3c"];
+  return [1, 2, 3, 4, 5, 6, 7, 8].map((i) => cssVar(`--cat-${i}`));
+}
+
+/** Cor estável por nome: a mesma entidade mantém a cor quando filtros mudam a contagem de séries. */
+export function colorFor(names: string[]) {
+  const p = palette(), other = cssVar("--cat-other");
+  const map: Record<string, string> = {};
+  names.forEach((n, i) => { map[n] = /^outr[oa]s?\b/i.test(n) || i >= p.length ? other : p[i]; });
+  return (n: string) => map[n] ?? other;
+}
+
+/** Rampa sequencial de um só matiz (claro → escuro no tema claro). */
+export function seqRamp() {
+  return [0, 1, 2, 3, 4].map((i) => cssVar(`--seq-${i}`));
 }
 
 export function baseOption() {
@@ -70,4 +82,13 @@ export function Chart({ option, height = 260, onClick }: { option: any; height?:
     <ReactECharts option={merged} style={{ height, width: "100%" }} notMerge lazyUpdate
       onEvents={onClick ? { click: onClick } : undefined} opts={{ renderer: "svg" }} />
   );
+}
+
+/** Tinta legível sobre um preenchimento: escura em cores claras, branca nas escuras. */
+export function inkOn(hex: string) {
+  const h = hex.replace("#", "");
+  if (h.length !== 6) return "#fff";
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.32 ? "#14231f" : "#fff";
 }

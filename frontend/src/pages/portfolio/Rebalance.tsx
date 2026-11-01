@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { MoneyInput } from "../../components/MoneyInput";
 import { QueryState } from "../../components/QueryState";
@@ -8,15 +7,13 @@ import { Chip, Empty, Money, Panel } from "../../components/ui";
 import { brl, parseBRL, pct } from "../../format";
 
 export default function Rebalance() {
-  const nav = useNavigate();
   const [raw, setRaw] = useState("");
   const [aporte, setAporte] = useState<number | null>(null);
   const q = useQuery({ queryKey: ["portfolio-rebalance", aporte],
     queryFn: () => api<any>(`/api/portfolio/rebalance${aporte !== null ? `?aporte=${aporte}` : ""}`) });
   const d = q.data;
   if (!d) return <QueryState q={q} what="as sugestões de aporte" layout="panel">{() => null}</QueryState>;
-  if (!d.available) return <Panel><Empty title="Sem alocação-alvo" action={<button className="btn" onClick={() => nav("/planejamento")}>Definir alvos</button>}>
-    {d.reason}</Empty></Panel>;
+  if (!d.available) return <Panel><Empty title="Sugestão de aporte">Defina os alvos no quadro acima (botão “Definir alvos”) para ver quanto aplicar em cada classe.</Empty></Panel>;
   const full = d.rebalanceamento_completo;
   return (
     <>

@@ -4,12 +4,12 @@ import { QueryState } from "../components/QueryState";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { CategoryOptions, Chip, Money, Panel, useCategories, useToast } from "../components/ui";
+import { CategoryPicker } from "../components/CategoryPicker";
+import { Chip, Money, Panel, useToast } from "../components/ui";
 import { brl, date, prettyName } from "../format";
 
 export default function Merchants() {
   const nav = useNavigate();
-  const cats = useCategories();
   const [filter, setFilter] = useState("");
   const [months, setMonths] = useState(12);
   const q = useQuery({ queryKey: ["merchants", months], queryFn: () => api<any[]>(`/api/merchants?months=${months}`) });
@@ -42,11 +42,9 @@ export default function Merchants() {
                 <td className="num soft">{total ? ((m.total / total) * 100).toFixed(1).replace(".", ",") + "%" : ""}</td>
                 <td className="soft">{date(m.last)}</td>
                 <td onClick={(e) => e.stopPropagation()}>
-                  <select className="select inline" value={m.category_origin === "user" ? m.category_id ?? "" : ""}
-                    onChange={(e) => patch.mutate({ id: m.id, body: { default_category_id: e.target.value } })}>
-                    <option value="">{m.category ? `Automático: ${m.category}` : "Automático"}</option>
-                    {cats.data && <CategoryOptions cats={cats.data} />}
-                  </select>
+                  <CategoryPicker variant="inline" value={m.category_origin === "user" ? m.category_id ?? "" : ""}
+                    clearLabel={m.category ? `Automático: ${m.category}` : "Automático"}
+                    onChange={(v) => patch.mutate({ id: m.id, body: { default_category_id: v } })} />
                   {m.category_origin === "user" && <Chip tone="green">sua escolha</Chip>}
                 </td>
               </tr>

@@ -291,3 +291,77 @@ def test_pluggy() -> dict:
         return {"ok": False, "erro": msg}
     except Exception as e:  # noqa: BLE001 — rede/DNS: a tela mostra o motivo em vez de um erro 500
         return {"ok": False, "erro": f"sem conexão com a Pluggy ({e.__class__.__name__})"}
+
+
+# ------------------------------------------------------------------ benefícios (VR/VA)
+@router.get("/benefits")
+def benefits(db: Session = Depends(get_db)) -> dict:
+    from app.accounting import benefits as B
+    out = B.summary(db)
+    out["pluggy"] = B.pluggy_benefit_connectors(db, pipeline.client)
+    db.commit()
+    return out
+
+
+@router.put("/benefits")
+def save_benefits(body: dict, db: Session = Depends(get_db)) -> dict:
+    from app.accounting import benefits as B
+    B.save_config(db, body)
+    B.sync_benefit_events(db)
+    db.commit()
+    out = B.summary(db)
+    out["pluggy"] = B.pluggy_benefit_connectors(db, pipeline.client)
+    db.commit()
+    return out
+
+
+@router.post("/benefits/pluggy-check")
+def check_benefit_connectors(db: Session = Depends(get_db)) -> dict:
+    from app.accounting import benefits as B
+    res = B.pluggy_benefit_connectors(db, pipeline.client, refresh=True)
+    db.commit()
+    return res
+
+
+# ------------------------------------------------------------------ notificações no celular (Web Push)
+class PushSub(BaseModel):
+    subscription: dict
+    nome: str | None = None
+
+
+@router.get("/push")
+def push_status(db: Session = Depends(get_db)) -> dict:
+    from app.alerts import push
+    out = push.public(db)
+    db.commit()
+    return out
+
+
+@router.post("/push/subscribe")
+def push_subscribe(body: PushSub, db: Session = Depends(get_db)) -> dict:
+    from app.alerts import push
+    try:
+        out = push.subscribe(db, body.subscription, body.nome)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    db.commit()
+    return out
+
+
+@router.delete("/push/subscribe/{ident}")
+def push_unsubscribe(ident: str, db: Session = Depends(get_db)) -> dict:
+    from app.alerts import push
+    out = push.unsubscribe(db, ident)
+    db.commit()
+    return out
+
+
+@router.post("/push/test")
+def push_test(db: Session = Depends(get_db)) -> dict:
+    from app.alerts import push
+    from app.utils.time import utcnow
+    res = push.send(db, "Teste do CFO Central", "As notificações no celular estão funcionando.", url="/", tag="teste",
+                    fingerprint=f"push-test:{utcnow().isoformat()}")
+    db.commit()
+    return {"ok": res.get("sent", 0) > 0, "enviados": res.get("sent", 0), "erros": res.get("errors", []),
+            "erro": res.get("reason")}

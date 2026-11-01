@@ -14,11 +14,11 @@ CHART: list[tuple] = [
     # Receitas
     ("rec", None, "Receitas", "receita", "receita_operacional", False, "INCOME", "#16a34a"),
     ("rec.salario", "rec", "Salário / bolsa", "receita", "receita_operacional", False, "INCOME", None),
-    ("rec.bonus", "rec", "Bônus / PLR", "receita", "receita_operacional", False, "INCOME", None),
-    ("rec.freela", "rec", "Freelance / serviços", "receita", "receita_operacional", False, "INCOME", None),
+    ("rec.bonus", "rec", "Bônus / PLR", "receita", "receitas_eventuais", False, "INCOME", None),
+    ("rec.freela", "rec", "Freelance / serviços", "receita", "receitas_eventuais", False, "INCOME", None),
     ("rec.beneficios", "rec", "Benefícios e auxílios", "receita", "receita_operacional", False, "INCOME", None),
     ("rec.presentes", "rec", "Presentes recebidos", "receita", "outras_receitas", False, "INCOME", None),
-    ("rec.vendas", "rec", "Venda de bens", "receita", "outras_receitas", False, "INCOME", None),
+    ("rec.vendas", "rec", "Venda de bens", "receita", "receitas_eventuais", False, "INCOME", None),
     ("rec.pix_terceiros", "rec", "Recebido de terceiros (a classificar)", "receita", "outras_receitas", False, "INCOME", None),
     ("rec.heranca", "rec", "Herança e doações recebidas", "receita", "extraordinarios", False, "INCOME", None),
     ("rec.outras", "rec", "Outras receitas", "receita", "outras_receitas", False, "INCOME", None),
@@ -46,6 +46,7 @@ CHART: list[tuple] = [
     ("alimentacao.restaurantes", "alimentacao", "Restaurantes e bares", "despesa", "estilo_vida", False, "EXPENSE", None),
     ("alimentacao.delivery", "alimentacao", "Delivery", "despesa", "estilo_vida", False, "EXPENSE", None),
     ("alimentacao.padaria", "alimentacao", "Padaria e café", "despesa", "estilo_vida", False, "EXPENSE", None),
+    ("alimentacao.beneficio", "alimentacao", "Pago com VR/VA", "despesa", "essenciais", True, "EXPENSE", None),
     # Transporte
     ("transporte", None, "Transporte", "despesa", "essenciais", True, "EXPENSE", "#7c3aed"),
     ("transporte.apps", "transporte", "Apps e táxi", "despesa", "essenciais", True, "EXPENSE", None),
@@ -195,6 +196,7 @@ DRE_LINES = [
     ("nao_classificado", "A classificar", -1),
     ("receitas_financeiras", "Receitas financeiras", 1),
     ("despesas_financeiras", "Despesas financeiras", -1),
+    ("receitas_eventuais", "Receitas eventuais (bônus, PLR, freela, vendas)", 1),
     ("extraordinarios", "Itens extraordinários", 1),
 ]
 
@@ -202,6 +204,10 @@ DRE_LINES = [
 # tocar no que o usuário tenha mudado para outro valor
 CATEGORY_UPGRADES = [
     ("rec.heranca", "dre_line", "outras_receitas", "extraordinarios"),
+    # receita que não se repete todo mês fica fora do resultado recorrente (e da taxa de poupança)
+    ("rec.bonus", "dre_line", "receita_operacional", "receitas_eventuais"),
+    ("rec.freela", "dre_line", "receita_operacional", "receitas_eventuais"),
+    ("rec.vendas", "dre_line", "outras_receitas", "receitas_eventuais"),
 ]
 
 

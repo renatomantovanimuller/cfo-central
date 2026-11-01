@@ -8,7 +8,7 @@ export const GLOSSARY: Record<string, string> = {
   competencia: "Por competência: o gasto conta no mês em que aconteceu (data da compra no cartão), não no mês em que a fatura foi paga.",
   patrimonio: "Patrimônio líquido: tudo o que você tem (contas, investimentos, bens informados) menos tudo o que deve (faturas atuais e futuras, empréstimos).",
   liquidez: "Liquidez imediata: dinheiro que dá para usar em até 1 dia útil (conta + investimentos resgatáveis, sem previdência/COE), já descontada a fatura atual do cartão. As parcelas futuras não entram aqui, por isso este número pode ser maior que o patrimônio líquido.",
-  receita_liquida: "Receita líquida: tudo o que você recebeu como renda no mês (salário, freelas, rendimentos), já descontado o imposto retido.",
+  receita_liquida: "Receita recorrente: o que entra todo mês (salário, benefícios, outras receitas), já descontado o imposto retido. Bônus, PLR, freelas e vendas aparecem à parte como receita eventual; herança e doações, como extraordinário.",
   resultado_recorrente: "Resultado recorrente: receita menos despesas do mês, sem contar entradas extraordinárias como herança ou doação. É o quanto sobrou de verdade.",
   poupanca: "Taxa de poupança: que parte da sua renda sobrou no mês. 20% significa que você guardou R$ 20 a cada R$ 100 recebidos.",
   aporte: "Aporte líquido: quanto você colocou em investimentos no mês menos quanto resgatou.",

@@ -31,6 +31,12 @@ def overview(month: str | None = None, db: Session = Depends(get_db)) -> dict:
     return O.overview(db, month)
 
 
+@router.get("/spending")
+def spending(end: str | None = None, months: int = 1, account: str | None = None, db: Session = Depends(get_db)) -> dict:
+    from app.analytics.spending import spending_report
+    return spending_report(db, _end(end), months, account)
+
+
 @router.get("/dre")
 def dre(end: str | None = None, months: int = 12, db: Session = Depends(get_db)) -> dict:
     return S.dre(db, S.month_list(_end(end), max(1, min(months, 36))))
@@ -87,6 +93,12 @@ def portfolio_realized(db: Session = Depends(get_db)) -> dict:
 def portfolio_performance(years: int = 3, db: Session = Depends(get_db)) -> dict:
     from app.portfolio.tracking import performance_report
     return P._clean(performance_report(db, max(1, min(years, 3))))
+
+
+@router.get("/portfolio/holding/{hid}")
+def portfolio_holding(hid: str, db: Session = Depends(get_db)) -> dict:
+    from app.portfolio.tracking import holding_detail
+    return P._clean(holding_detail(db, hid))
 
 
 @router.get("/portfolio/income")
@@ -201,6 +213,12 @@ class TargetItem(BaseModel):
     target_pct: float
     min_pct: float | None = None
     max_pct: float | None = None
+
+
+@router.get("/plan/targets")
+def get_targets(db: Session = Depends(get_db)) -> dict:
+    from app.analytics import plano as PL
+    return PL.policy_report(db)
 
 
 @router.put("/plan/targets")

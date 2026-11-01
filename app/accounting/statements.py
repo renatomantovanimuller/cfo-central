@@ -21,11 +21,12 @@ SUBTOTALS = [
     ("margem_essenciais", "Margem após essenciais", ["receita_liquida", "essenciais"]),
     ("resultado_operacional", "Resultado operacional", ["margem_essenciais", "estilo_vida", "terceiros", "nao_classificado"]),
     ("resultado_liquido", "Resultado recorrente (poupança)", ["resultado_operacional", "receitas_financeiras", "despesas_financeiras"]),
-    ("resultado_total", "Resultado total", ["resultado_liquido", "extraordinarios"]),
+    ("resultado_total", "Resultado total", ["resultado_liquido", "receitas_eventuais", "extraordinarios"]),
 ]
 DRE_ORDER = ["receita_operacional", "outras_receitas", "impostos_renda", "receita_liquida", "essenciais",
              "margem_essenciais", "estilo_vida", "terceiros", "nao_classificado", "resultado_operacional",
-             "receitas_financeiras", "despesas_financeiras", "resultado_liquido", "extraordinarios", "resultado_total"]
+             "receitas_financeiras", "despesas_financeiras", "resultado_liquido", "receitas_eventuais", "extraordinarios",
+             "resultado_total"]
 
 
 def month_list(end: str | None = None, n: int = 12) -> list[str]:
@@ -38,7 +39,8 @@ def _events_frame(s: Session, start: date, end: date, types: set[str] | None = N
     col = getattr(FinancialEvent, date_col)
     q = (select(FinancialEvent.source_id, FinancialEvent.amount, FinancialEvent.event_type,
                 FinancialEvent.category_id, col.label("d"), Account.type.label("acc_type"))
-         .join(Account, Account.id == FinancialEvent.account_id)
+         # outer: eventos sem conta (benefício VR/VA informado) entram na DRE, nunca no caixa (bank_only)
+         .outerjoin(Account, Account.id == FinancialEvent.account_id)
          .where(FinancialEvent.is_removed.is_(False), col >= start, col <= end))
     if types:
         q = q.where(FinancialEvent.event_type.in_(types))

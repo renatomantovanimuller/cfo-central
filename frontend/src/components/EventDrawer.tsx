@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { useRef } from "react";
 import { useApiMutation } from "../hooks/useApiMutation";
 import { undoCategoryBody } from "./undoCategory";
@@ -6,7 +7,8 @@ import { QueryState } from "./QueryState";
 import { useState } from "react";
 import { api } from "../api";
 import { brl, date, dateTime, EVENT_LABELS, RULE_SOURCE } from "../format";
-import { CategorySelect, Chip, Drawer, EventTypeSelect, useToast } from "./ui";
+import { CategoryPicker } from "./CategoryPicker";
+import { Chip, Drawer, EventTypeSelect, useToast } from "./ui";
 
 export function EventDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const q = useQuery({ queryKey: ["event", id], queryFn: () => api<any>(`/api/events/${id}`) });
@@ -24,13 +26,13 @@ export function EventDrawer({ id, onClose }: { id: string; onClose: () => void }
   const e = d?.event, t = d?.transaction;
   return (
     <Drawer title={e ? <><h3>{e.description}</h3><div className={`num ${e.amount < 0 ? "neg" : "pos"}`} style={{ textAlign: "left", fontSize: 20, fontWeight: 650 }}>{brl(e.amount)}</div></> : "Lançamento"} onClose={onClose}>
-      {!d ? <QueryState q={q} what="o lançamento" layout="panel">{() => null}</QueryState> : (
+      {!d ? <QueryState q={q} what="o lançamento" layout="panel">{() => null}</QueryState> : d.benefit ? <BenefitBody e={e} /> : (
         <>
           <section>
             <h4 style={{ margin: "0 0 8px" }}>Classificação</h4>
             <div className="grid" style={{ gap: 8 }}>
-              <label className="field">Categoria
-                <CategorySelect value={e.category_id} onChange={(v) => { previousCat.current = undoCategoryBody(e.category_id, !!d.override); save.mutate({ category_id: v || null, learn: true }); }} /></label>
+              <div className="field">Categoria
+                <CategoryPicker value={e.category_id} onChange={(v) => { previousCat.current = undoCategoryBody(e.category_id, !!d.override); save.mutate({ category_id: v || null, learn: true }); }} /></div>
               <label className="field">Tipo de evento
                 <EventTypeSelect value={d.override?.event_type ?? ""} placeholder={`Automático (${EVENT_LABELS[e.event_type]})`}
                   onChange={(v) => save.mutate({ event_type: v || null, learn: false })} /></label>
@@ -84,5 +86,21 @@ export function EventDrawer({ id, onClose }: { id: string; onClose: () => void }
         </>
       )}
     </Drawer>
+  );
+}
+
+/** Evento gerado pelo benefício informado em Configurações: não vem de transação, não tem ajuste manual. */
+function BenefitBody({ e }: { e: any }) {
+  return (
+    <section>
+      <dl className="kv">
+        <dt>Data</dt><dd>{date(e.competence_date)}</dd>
+        <dt>Tipo</dt><dd>{EVENT_LABELS[e.event_type]}</dd>
+        {e.counterparty && <><dt>Emissor</dt><dd>{e.counterparty}</dd></>}
+        <dt>Origem</dt><dd>Benefício informado em Configurações (o cartão de benefício não tem conexão Open Finance)</dd>
+      </dl>
+      {e.note && <p className="note">{e.note}</p>}
+      <p className="note">Para mudar valor, dia do crédito ou reajustes, edite o benefício em <Link to="/config#beneficios">Configurações</Link>. Não entra no saldo das contas nem no fluxo de caixa.</p>
+    </section>
   );
 }

@@ -40,6 +40,7 @@ def kpis_from_dre(d: dict) -> dict:
         out[m] = {"receita_liquida": rec, "despesas": -expenses, "essenciais": -rows["essenciais"]["values"][m],
                   "estilo_vida": -rows["estilo_vida"]["values"][m], "resultado": res,
                   "extraordinarios": rows["extraordinarios"]["values"][m],
+                  "eventuais": rows["receitas_eventuais"]["values"][m],
                   "resultado_total": rows["resultado_total"]["values"][m],
                   "taxa_poupanca": d["savings_rate"][m]}
     return out
@@ -223,12 +224,8 @@ def merchants_ranking(s: Session, months: int = 12) -> list[dict]:
 # ------------------------------------------------------------------ cartões e previsão
 def cards_view(s: Session) -> dict:
     pos = current_position(s)
-    bills = s.scalars(select(CreditCardBill).order_by(CreditCardBill.due_date.desc())).all()
-    by_acc = defaultdict(list)
-    for b in bills:
-        by_acc[b.account_id].append({"id": b.id, "due_date": b.due_date, "close_date": b.close_date,
-                                     "total": b.total_amount, "minimum": b.minimum_payment,
-                                     "charges": b.finance_charges})
+    from app.accounting.bills import reconcile_bills
+    by_acc = reconcile_bills(s)
     cards = []
     for c in pos["cards"]:
         c = dict(c)
@@ -290,7 +287,7 @@ def liquidity_forecast(s: Session, horizon: int = 6) -> dict:
     n = len(hist)
 
     income_mask = ((df["acc"] == "BANK") & df["et"].isin(["INCOME", "INVESTMENT_INCOME"]) & (df["amount"] > 0)
-                   & ~df["cat"].isin(EXTRAORDINARY_CATEGORIES) & (df["line"] != "extraordinarios")) if not df.empty else None
+                   & ~df["cat"].isin(EXTRAORDINARY_CATEGORIES) & ~df["line"].isin(["extraordinarios", "receitas_eventuais"])) if not df.empty else None
     salary_months = _monthly_totals(df, income_mask & (df["cat"] == SALARY_CATEGORY), hist) if not df.empty else []
     other_months = _monthly_totals(df, income_mask & (df["cat"] != SALARY_CATEGORY), hist) if not df.empty else []
     last_salary = next((v for v in reversed(salary_months) if v > 0), 0.0)

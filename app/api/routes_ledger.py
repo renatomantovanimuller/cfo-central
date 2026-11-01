@@ -111,6 +111,10 @@ def list_events(month: str | None = None, start: date | None = None, end: date |
 @router.get("/events/{source_id}")
 def event_detail(source_id: str, db: Session = Depends(get_db)) -> dict:
     e = db.scalar(select(FinancialEvent).where(FinancialEvent.source_id == source_id))
+    if e is not None and e.source_type == "benefit":
+        return {"event": {c.name: getattr(e, c.name) for c in FinancialEvent.__table__.columns}, "transaction": None,
+                "benefit": True, "raw_payload": None, "provenance": None, "override": None, "rule": None, "audit": [],
+                "merchant": None, "transfer": None, "card_link": None}
     t = db.get(Transaction, source_id)
     if not e or not t:
         raise HTTPException(404)
@@ -208,8 +212,10 @@ class BulkPatch(EventPatch):
 
 @router.post("/events/bulk")
 def bulk_patch(body: BulkPatch, db: Session = Depends(get_db)) -> dict:
+    ids = set(db.scalars(select(Transaction.id).where(Transaction.id.in_(body.ids or ["-"]))))
     for sid in body.ids:
-        _apply_override(db, sid, body)
+        if sid in ids:  # eventos sem transação (benefício informado) não têm ajuste manual
+            _apply_override(db, sid, body)
     db.commit()
     res = pipeline.rebuild_now("user")
     return {"ok": True, "updated": len(body.ids), "changed": res.get("counts", {}).get("changed", 0)}

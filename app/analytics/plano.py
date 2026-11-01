@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.accounting.statements import dre, month_list
 from app.alerts.reviews import ReviewCandidate, fmt_brl
-from app.models import AllocationTarget, AppSetting, FinancialEvent, RecurringRule
+from app.models import AllocationTarget, AppSetting, Category, FinancialEvent, RecurringRule
 from app.utils.time import month_add, month_bounds, month_key, today_brt
 
 PLAN_DEFAULTS = {
@@ -50,10 +50,13 @@ def safe_to_spend(s: Session, today: date | None = None) -> dict:
     hist = month_list(month_add(month, -1), 3)
     d = dre(s, hist + [month], with_valuation=False)
     rows = {r["key"]: r["values"] for r in d["rows"]}
-    # bônus/PLR entra no resultado, mas não é renda de todo mês: fica fora da base de previsão
+    # bônus/PLR, freela e vendas já ficam fora da receita líquida (linha "receitas eventuais"); só sobra descontar
+    # o que estiver numa categoria personalizada que ainda aponte para a receita do dia a dia
     bonus = {m: 0.0 for m in hist + [month]}
+    eventual_ids = [c.id for c in s.scalars(select(Category).where(Category.id.in_(["rec.bonus", "rec.freela", "rec.vendas"]),
+                                                                    Category.dre_line.in_(["receita_operacional", "outras_receitas"])))]
     for amt, dt in s.execute(select(FinancialEvent.amount, FinancialEvent.competence_date).where(
-            FinancialEvent.is_removed.is_(False), FinancialEvent.category_id == "rec.bonus",
+            FinancialEvent.is_removed.is_(False), FinancialEvent.category_id.in_(eventual_ids or ["-"]),
             FinancialEvent.competence_date.between(month_bounds(hist[0])[0], b))):
         key = month_key(dt)
         if key in bonus:
@@ -92,7 +95,7 @@ def safe_to_spend(s: Session, today: date | None = None) -> dict:
         "disponivel": round(disponivel, 2), "por_dia": round(disponivel / dias_rest, 2) if dias_rest > 0 else None,
         "dias_restantes": dias_rest, "projecao_gasto_mes": round(ritmo + comprometido, 2),
         "premissas": [
-            "Renda prevista = maior entre a mediana da receita recorrente dos 3 meses anteriores e o já recebido no mês (sem bônus/PLR).",
+            "Renda prevista = maior entre a mediana da receita recorrente dos 3 meses anteriores e o já recebido no mês (sem bônus, PLR, freela ou vendas).",
             "Meta de aporte = configurada no plano; sem meta, 20% da renda prevista limitado à sobra mediana dos 3 meses anteriores.",
             "Gasto até hoje = despesas do mês por competência (cartão na data da compra), já descontados reembolsos.",
             "Recorrências pendentes = gastos recorrentes detectados com próxima data ainda neste mês.",

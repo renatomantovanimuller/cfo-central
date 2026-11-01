@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { Chart, cssVar, kTick } from "../components/Chart";
-import { Empty, Money, Panel } from "../components/ui";
+import { Chip, Empty, Money, Panel } from "../components/ui";
 import { brl, date, monthLabel, pct } from "../format";
 
 export default function Cards() {
@@ -32,10 +32,13 @@ export default function Cards() {
               {u !== null && <div className={`bar ${u > 0.8 ? "debit" : ""}`} style={{ marginTop: 12 }}><i style={{ width: `${Math.min(100, u * 100)}%` }} /></div>}
               <h4 style={{ margin: "14px 0 4px" }}>Faturas fechadas</h4>
               {c.bills.length === 0 ? <p className="muted">Sem faturas informadas.</p> : (
-                <Chart height={160} option={{ legend: false, tooltip: { trigger: "axis", valueFormatter: (v: number) => brl(v) },
+                <Chart height={150} option={{ legend: false, tooltip: { trigger: "axis", valueFormatter: (v: number) => brl(v) },
                   xAxis: { type: "category", data: [...c.bills].reverse().map((b: any) => date(b.due_date).slice(3)) },
                   yAxis: { type: "value", axisLabel: { formatter: kTick } },
-                  series: [{ type: "bar", data: [...c.bills].reverse().map((b: any) => Math.round(b.total ?? 0)), itemStyle: { color: cssVar("--blue"), borderRadius: [2, 2, 0, 0] }, barMaxWidth: 22 }] }} />)}
+                  series: [{ type: "bar", data: [...c.bills].reverse().map((b: any) => ({ value: Math.round(b.total ?? 0),
+                    itemStyle: { color: b.situacao === "ok" || b.situacao === "sem_anterior" ? cssVar("--cat-1") : cssVar("--warning-fill") } })),
+                    itemStyle: { borderRadius: [3, 3, 0, 0] }, barMaxWidth: 22 }] }} />)}
+              {c.bills.length > 0 && <BillCheck bills={c.bills} />}
             </Panel>
           );
         })}
@@ -63,5 +66,40 @@ export default function Cards() {
           series: [{ type: "line", data: d.monthly_spend.map((x: any) => Math.round(x.value)), symbolSize: 6, areaStyle: { color: cssVar("--band") }, lineStyle: { color: cssVar("--ledger"), width: 2 }, itemStyle: { color: cssVar("--ledger") } }] }} />
       </Panel>
     </>
+  );
+}
+
+const SITUACAO: Record<string, [string, "green" | "red" | "ochre" | undefined]> = {
+  ok: ["confere", "green"], falta_lancamento: ["falta lançamento", "red"], sobra_lancamento: ["sobra lançamento", "red"],
+  sem_anterior: ["sem fatura anterior", undefined],
+};
+
+/** Fatura a fatura: total do banco = saldo anterior + compras + créditos + pagamentos. */
+function BillCheck({ bills }: { bills: any[] }) {
+  const bad = bills.filter((b) => b.situacao === "falta_lancamento" || b.situacao === "sobra_lancamento").length;
+  const dups = bills.reduce((a, b) => a + (b.duplicados_descartados?.length ?? 0), 0);
+  return (
+    <details className="bill-check" open={bad > 0}>
+      <summary className="note">{bad ? `${bad} ${bad === 1 ? "fatura não confere" : "faturas não conferem"}` : "Todas as faturas conferem com os lançamentos"}
+        {dups ? ` · ${dups} pagamento${dups > 1 ? "s" : ""} repetido${dups > 1 ? "s" : ""} pela fonte, descartado${dups > 1 ? "s" : ""}` : ""}</summary>
+      <div className="table-wrap" style={{ maxHeight: 320 }}>
+        <table className="table compact">
+          <thead><tr><th>Vencimento</th><th className="num">Anterior</th><th className="num">Compras</th><th className="num hide-sm">Créditos</th>
+            <th className="num">Pagamentos</th><th className="num">Total</th><th>Situação</th></tr></thead>
+          <tbody>{bills.map((b) => {
+            const [label, tone] = SITUACAO[b.situacao] ?? [b.situacao, undefined];
+            return (
+              <tr key={b.id} title={b.duplicados_descartados?.length ? `Descartado: ${b.duplicados_descartados.map((x: any) => `${x.descricao} ${brl(x.valor)} em ${date(x.data)}`).join("; ")}` : undefined}>
+                <td>{date(b.due_date)}</td><td><Money v={b.anterior} /></td><td><Money v={b.compras} /></td>
+                <td className="hide-sm"><Money v={b.creditos} /></td><td><Money v={b.pagamentos} /></td><td><Money v={b.total} /></td>
+                <td><Chip tone={tone}>{label}</Chip>{b.diferenca && Math.abs(b.diferenca) > 1 ? <div className="small neg">{brl(b.diferenca)}</div> : null}
+                  {b.duplicados_descartados?.length ? <div className="small muted">1 pagamento repetido descartado</div> : null}</td>
+              </tr>);
+          })}</tbody>
+        </table>
+      </div>
+      <p className="note">Total = anterior + compras + créditos (estornos) + pagamentos. Quando o banco manda o mesmo pagamento duas vezes,
+        a cópia só é descartada se, sem ela, a conta da fatura fecha no centavo.</p>
+    </details>
   );
 }

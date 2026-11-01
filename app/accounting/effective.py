@@ -20,6 +20,9 @@ from app.utils.time import today_brt
 
 SUPERSEDED = "pending:superseded"
 STALE = "pending:stale"
+DUP_PAYMENT = "card_payment:duplicate"
+PAYMENT_TWIN_DAYS = 2
+BILL_TOLERANCE = 1.0
 TWIN_WINDOW_DAYS = 3
 PREFIX_LEN = 8
 
@@ -83,13 +86,76 @@ def _account_types(s: Session) -> dict[str, str]:
 
 
 def excluded_pending_ids(s: Session, today: date | None = None, stale_days: int | None = None) -> set[str]:
-    """IDs de transações pendentes a excluir de qualquer soma/leitura de razão."""
+    """IDs a excluir de qualquer soma/leitura de razão: pendentes duplicados ou velhos e pagamentos de fatura
+    que a fonte entregou em dobro."""
     rows = list(s.scalars(select(Transaction).where(Transaction.removed_at.is_(None))))
-    return set(ineffective_pending(rows, today, stale_days, _account_types(s)))
+    return set(ineffective_pending(rows, today, stale_days, _account_types(s))) | set(duplicate_card_payments(s, rows))
 
 
 def effective_transactions(s: Session, today: date | None = None, stale_days: int | None = None) -> list[Transaction]:
-    """Transações não removidas, sem pendentes duplicados ou velhos."""
+    """Transações não removidas, sem pendentes duplicados ou velhos e sem pagamento de fatura repetido."""
     rows = list(s.scalars(select(Transaction).where(Transaction.removed_at.is_(None))))
-    bad = ineffective_pending(rows, today, stale_days, _account_types(s))
+    bad = set(ineffective_pending(rows, today, stale_days, _account_types(s))) | set(duplicate_card_payments(s, rows))
     return [t for t in rows if t.id not in bad]
+
+
+def duplicate_card_payments(s: Session, rows: list[Transaction] | None = None) -> dict[str, str]:
+    """Pagamentos de fatura que chegaram duas vezes no cartão (ex.: "Pagamento recebido" e "pagamento on line"
+    do mesmo valor no mesmo dia, cada um ligado a uma fatura). Só descarta a cópia quando a conta das faturas
+    prova o erro: sem ela, toda fatura afetada fecha (total = anterior + lançamentos) e, com ela, não fecha."""
+    from app.models import CreditCardBill
+    types = _account_types(s)
+    rows = rows if rows is not None else list(s.scalars(select(Transaction).where(Transaction.removed_at.is_(None))))
+    pend = ineffective_pending(rows, account_types=types)
+    live = [t for t in rows if t.id not in pend and types.get(t.account_id) == "CREDIT"]
+    bills = [b for b in s.scalars(select(CreditCardBill).where(CreditCardBill.removed_at.is_(None))) if b.due_date]
+    if not bills:
+        return {}
+    by_acc: dict[str, list] = defaultdict(list)
+    for b in bills:
+        by_acc[b.account_id].append(b)
+    prev_of: dict[str, object] = {}
+    for bs in by_acc.values():
+        bs.sort(key=lambda b: b.due_date)
+        for p, c in zip(bs, bs[1:]):
+            if (c.due_date - p.due_date).days <= 40 and p.total_amount is not None and c.total_amount is not None:
+                prev_of[c.id] = p
+    sums: dict[str, float] = defaultdict(float)
+    for t in live:
+        if t.bill_id:
+            sums[t.bill_id] += t.amount_brl or 0.0
+    bill_by_id = {b.id: b for b in bills}
+
+    def closes(bill_id: str, adjust: float = 0.0) -> bool | None:
+        b, p = bill_by_id.get(bill_id), prev_of.get(bill_id)
+        if b is None or p is None:
+            return None
+        return abs(b.total_amount - (p.total_amount + sums[bill_id] + adjust)) <= BILL_TOLERANCE
+
+    pays: dict = defaultdict(list)
+    for t in live:
+        if t.status != "PENDING" and _is_payment(norm(t.description or "")) and (t.amount_brl or 0) < 0:
+            pays[(t.account_id, round(abs(t.amount_brl), 2))].append(t)
+    out: dict[str, str] = {}
+    # várias passadas: corrigir uma fatura pode ser o que faltava para a cópia de outro pagamento se provar
+    for _ in range(4):
+        before = len(out)
+        _drop_twins(pays, out, closes, sums)
+        if len(out) == before:
+            break
+    return out
+
+
+def _drop_twins(pays: dict, out: dict, closes, sums: dict) -> None:
+    for group in pays.values():
+        group.sort(key=lambda t: t.date)
+        for a, b in zip(group, group[1:]):
+            if a.id in out or b.id in out or abs((b.date - a.date).days) > PAYMENT_TWIN_DAYS or a.bill_id == b.bill_id:
+                continue
+            for drop, keep in ((a, b), (b, a)):
+                if not drop.bill_id or closes(drop.bill_id) is not False:
+                    continue
+                if closes(drop.bill_id, -(drop.amount_brl or 0.0)) and closes(keep.bill_id) is not False:
+                    out[drop.id] = DUP_PAYMENT
+                    sums[drop.bill_id] -= drop.amount_brl or 0.0
+                    break

@@ -35,7 +35,27 @@ def _alerts_job() -> None:
                 monthly_close(s)
             daily_digest(s)
     except Exception:  # noqa: BLE001
-        log.exception("alertas por e-mail falharam")
+        log.exception("alertas falharam")
+    _benefit_connector_job()
+
+
+def _benefit_connector_job() -> None:
+    """Uma vez por semana confere se a Pluggy passou a ter conector de cartão de benefício (VR/VA) e avisa uma vez."""
+    from app.accounting.benefits import get_config, pluggy_benefit_connectors
+    from app.alerts.notify import notify_once
+    try:
+        with session_scope() as s:
+            if not get_config(s)["itens"]:
+                return
+            res = pluggy_benefit_connectors(s, pipeline.client)
+            found = res.get("encontrados") or []
+            if found:
+                names = ", ".join(sorted(c["nome"] for c in found))
+                notify_once(s, f"benefit-connector:{names}", "Conector de benefício disponível",
+                            f"A Pluggy agora conecta {names}. Conecte em Conexões e desligue o benefício informado "
+                            f"em Configurações para não contar em dobro.", url="/conexoes")
+    except Exception:  # noqa: BLE001
+        log.exception("verificação de conector de benefício falhou")
 
 
 def start_scheduler():

@@ -11,7 +11,8 @@ from collections import Counter, defaultdict
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.accounting.effective import SUPERSEDED, ineffective_pending
+from app.accounting.benefits import sync_benefit_events
+from app.accounting.effective import DUP_PAYMENT, SUPERSEDED, duplicate_card_payments, ineffective_pending
 from app.alerts.reviews import ReviewCandidate, fmt_brl
 from app.categorization.chart import MCC_MAP, seed_chart
 from app.categorization.engine import (Decision, TxView, compile_rules, keyword_category, match_rule,
@@ -150,12 +151,13 @@ def rebuild_ledger(s: Session, actor: str = "system", reason: str = "rebuild") -
 
     # 0. pendentes duplicados (têm POSTED equivalente) ou velhos sem efetivação: fora do razão e das conciliações
     dropped = ineffective_pending(txs)
+    dropped.update(duplicate_card_payments(s))
     txs_live = [t for t in txs if t.id not in dropped]
 
     # 1. reconciliação estrutural
     structural: dict[str, Decision] = {
         tid: Decision("pat.ignorar", "IGNORE", "structural", why, 0.95,
-                      review=["pending_stale"] if why != SUPERSEDED else [])
+                      review=["pending_stale"] if why not in (SUPERSEDED, DUP_PAYMENT) else [])
         for tid, why in dropped.items()}
     structural.update(investment_flows(txs_live))
     cp, card_links = card_payments(txs_live, bills, card_accounts, skip=set(structural))
@@ -274,6 +276,7 @@ def rebuild_ledger(s: Session, actor: str = "system", reason: str = "rebuild") -
                    f"({d0.confidence:.0%} de confiança).",
             data={"count": len(group), "total": total, "category_id": cat0.id, "merchant_id": mid,
                   "tx_ids": [g[0].id for g in group][:200]}))
+    counts["benefit"] = sync_benefit_events(s)
     s.flush()
     return {"events": len(decided), "transfers": len(transfer_links), "card_links": len(card_links),
             "review_candidates": review_candidates, "counts": dict(counts),

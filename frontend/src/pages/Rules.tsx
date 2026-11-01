@@ -8,7 +8,8 @@ import { useSearchParams } from "react-router-dom";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Trash2 } from "lucide-react";
 import { api } from "../api";
-import { CategorySelect, Chip, EventTypeSelect, Money, Panel, useToast } from "../components/ui";
+import { CategoryPicker } from "../components/CategoryPicker";
+import { Chip, EventTypeSelect, Money, Panel, useToast } from "../components/ui";
 import { date, EVENT_LABELS } from "../format";
 
 const FIELDS: Record<string, string> = { description: "Descrição", merchant: "Nome do comerciante/contraparte",
@@ -60,7 +61,7 @@ export default function Rules() {
           <input className="input" style={{ flex: "1 1 220px" }} placeholder="texto, documento ou expressão" value={f.pattern} onChange={set("pattern")} />
         </div>
         <div className="toolbar" style={{ marginTop: 8 }}>
-          <CategorySelect value={f.category_id} onChange={set("category_id")} placeholder="Categoria (opcional)" />
+          <CategoryPicker value={f.category_id} onChange={set("category_id")} placeholder="Categoria (opcional)" clearLabel="Sem categoria (só o tipo)" />
           <EventTypeSelect value={f.event_type} onChange={set("event_type")} placeholder="Tipo de evento (opcional)" />
           <select className="select" value={f.direction} onChange={set("direction")}>
             <option value="">entradas e saídas</option><option value="out">só saídas</option><option value="in">só entradas</option></select>

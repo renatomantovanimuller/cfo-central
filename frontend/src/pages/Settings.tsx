@@ -9,6 +9,8 @@ import { Trash2 } from "lucide-react";
 import { api } from "../api";
 import { Chip, Money, Panel, useToast } from "../components/ui";
 import { EmailForm, PluggyForm } from "../components/Integrations";
+import { BenefitsPanel } from "../components/Benefits";
+import { PushPanel } from "../components/PushPanel";
 import { DEMO } from "../demo";
 import { date, dateTime } from "../format";
 
@@ -54,13 +56,17 @@ export default function SettingsPage() {
             <button className="btn sm ghost" onClick={() => setEditMail(true)}>Alterar</button></p>
         ) : (
           <>
-            {!alerts.data?.configurado && <p className="note" style={{ marginTop: 0 }}>Opcional. Sem e-mail, os alertas continuam na tela de Revisão.</p>}
+            {!alerts.data?.configurado && <p className="note" style={{ marginTop: 0 }}>Opcional. Sem e-mail, os alertas continuam na tela de Revisão e, se ativadas, nas notificações do celular.</p>}
             <EmailForm />
           </>
         )}
         {alerts.data?.ultimos?.length > 0 && <table className="table" style={{ marginTop: 8 }}><tbody>{alerts.data.ultimos.map((n: any, i: number) => (
           <tr key={i}><td className="soft small">{dateTime(n.em)}</td><td>{n.assunto}</td><td>{n.status === "sent" ? <Chip tone="green">enviado</Chip> : <Chip tone="red">erro</Chip>}</td></tr>))}</tbody></table>}
       </Panel>
+
+      <PushPanel hour={alerts.data?.horario} />
+
+      <BenefitsPanel />
 
       <Panel title="Contas" hint="apelidos e o que entra no patrimônio" flush>
         <table className="table"><thead><tr><th>Conta</th><th>Apelido</th><th>Finalidade</th><th>No patrimônio</th></tr></thead>
