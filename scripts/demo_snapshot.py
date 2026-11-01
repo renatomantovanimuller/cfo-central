@@ -48,6 +48,7 @@ def main(out: str) -> None:
 
         for p in ("/api/sync/status", "/api/onboarding", "/api/integrations", "/api/reviews", "/api/categories/flat",
                   "/api/balance", "/api/cards", "/api/portfolio", "/api/portfolio/realized", "/api/planning",
+                  "/api/portfolio/performance", "/api/portfolio/income", "/api/portfolio/rebalance",
                   "/api/rules", "/api/data-health", "/api/assets", "/api/manual-assets", "/api/alerts/status"):
             get(p)
         conns = get("/api/connections")

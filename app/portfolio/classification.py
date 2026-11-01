@@ -5,12 +5,22 @@ import re
 
 from app.categorization.text import norm
 
-ETF_INTL = {"IVVB11", "SPXR11", "SPXI11", "NASD11", "WRLD11", "ACWI11", "EURP11", "XINA11", "BBSD11", "TECK11",
-            "SMAC11", "GOLD11", "USDB11", "ASIA11", "QQQM11", "BIEM11", "IMBB11"}
+ETF_INTL = {"IVVB11", "SPXR11", "SPXI11", "SPXH11", "NASD11", "WRLD11", "ACWI11", "EURP11", "XINA11", "TECK11",
+            "SMAC11", "GOLD11", "USDB11", "ASIA11", "QQQM11", "BIEM11", "ALUG11"}
 ETF_BR_EQUITY = {"BOVA11", "BOVV11", "BOVX11", "SMAL11", "DIVO11", "BOVB11", "PIBB11", "ECOO11", "MATB11",
-                 "FIND11", "GOVE11", "BRAX11", "XBOV11", "NSDV11", "DIVD11", "SMAB11"}
+                 "FIND11", "GOVE11", "BRAX11", "XBOV11", "NSDV11", "DIVD11", "SMAB11", "BBSD11"}
 ETF_FIXED = {"B5P211", "IMAB11", "IRFM11", "FIXA11", "LFTS11", "IB5M11", "B5MB11", "IMBB11", "DEBB11",
-             "NTNS11", "LFTB11", "IDKA11", "5PRE11", "ALUG11"}
+             "NTNS11", "LFTB11", "IDKA11", "5PRE11"}
+# indexador de referência dos ETFs de renda fixa (o ETF é negociado em bolsa, mas o risco é de juros/inflação)
+ETF_RF_INDEXER = {"B5P211": "IPCA", "IMAB11": "IPCA", "IB5M11": "IPCA", "B5MB11": "IPCA", "IMBB11": "IPCA",
+                  "IDKA11": "IPCA", "NTNS11": "IPCA", "DEBB11": "IPCA", "IRFM11": "PRE", "5PRE11": "PRE",
+                  "FIXA11": "PRE", "LFTS11": "SELIC", "LFTB11": "SELIC"}
+# ETFs de ações estrangeiras com proteção cambial: não contam como exposição a dólar
+FX_HEDGED = {"SPXR11", "SPXH11"}
+ETF_ISSUER_HINTS = ("FUNDO DE INDICE", "FDO INDICE", "FUNDO INDICE", "FDO DE INDICE", "FDO INV COTAS FDO INDICE",
+                    "INDEX FUND", " ETF", "ISHARES", "IT NOW")
+INTL_HINTS = ("S&P", "SP 500", "NASDAQ", "MSCI", "GLOBAL", "EUA", "USA", "WORLD", "EUROPA", "CHINA", "REIT")
+RF_HINTS = ("IMA-B", "IMAB", "IRF-M", "IRFM", "TESOURO", "RENDA FIXA", "DEBENT", "IDKA", "NTN")
 ETF_CRYPTO = {"HASH11", "QBTC11", "BITH11", "ETHE11", "QETH11", "BITI11", "CRPT11", "DEFI11", "NFTS11"}
 FGC_SUBTYPES = {"CDB", "LCI", "LCA", "LC", "RDB", "LCD", "LIG", "POUPANCA"}
 TICKER_RE = re.compile(r"^(?=[A-Z0-9]*[A-Z])[A-Z0-9]{4}\d{1,2}[A-Z]?$")
@@ -77,21 +87,26 @@ def classify(inv: dict) -> dict:
                        liquidity="D0" if has_daily_liquidity(inv) else "vencimento")
         key = inv.get("isin") or code or f"rf:{norm(issuer)[:40]}:{sub}:{indexer}:{inv.get('rate')}:{inv.get('due_date')}"
     elif typ in ("ETF", "EQUITY"):
+        text = f" {norm(issuer)} {norm(inv.get('name'))} ".upper()
+        etf_by_issuer = any(k in text for k in ETF_ISSUER_HINTS)
         if ticker in ETF_INTL:
             cls = "ETF Internacional"
         elif ticker in ETF_FIXED:
             cls = "ETF Renda Fixa"
         elif ticker in ETF_CRYPTO:
             cls = "Cripto"
-        elif ticker in ETF_BR_EQUITY or typ == "ETF":
+        elif ticker in ETF_BR_EQUITY:
             cls = "ETF Ações BR"
+        elif typ == "ETF" or etf_by_issuer:  # ETF fora das listas: pelo nome do fundo de índice
+            cls = ("ETF Internacional" if any(k in text for k in INTL_HINTS) else
+                   "ETF Renda Fixa" if any(k in text for k in RF_HINTS) else "ETF Ações BR")
         elif sub in ("REAL_ESTATE_FUND", "FII") or (ticker and ticker.endswith("11") and typ == "EQUITY"
                                                      and sub == "REAL_ESTATE_FUND"):
             cls = "FIIs"
         else:
             cls = "Ações BR"
-        indexer = "VAR"
-        out.update(indexer="VAR", liquidity="D2", yahoo_symbol=f"{ticker}.SA" if ticker else None)
+        indexer = ETF_RF_INDEXER.get(ticker or "", "IPCA") if cls == "ETF Renda Fixa" else "VAR"
+        out.update(indexer=indexer, liquidity="D2", yahoo_symbol=f"{ticker}.SA" if ticker else None)
         key = ticker or inv.get("isin") or f"rv:{inv.get('name')}"
     elif typ == "MUTUAL_FUND":
         cls = "Fundos"

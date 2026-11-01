@@ -7,11 +7,11 @@ import pandas as pd
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.connectors.market.sources import SGS_SERIES, sgs, yahoo_history
-from app.models import Asset, AssetPrice, MarketSeries
+from app.connectors.market.sources import SGS_SERIES, sgs, yahoo_chart
+from app.models import Asset, AssetEvent, AssetPrice, MarketSeries
 from app.utils.time import today_brt
 
-BENCHMARKS = {"^BVSP": "Ibovespa", "^GSPC": "S&P 500 (USD)", "BRL=X": "Dólar (BRL)", "IMAB11.SA": "IMA-B (proxy IPCA+)",
+BENCHMARKS = {"^BVSP": "Ibovespa (preço)", "BOVA11.SA": "Ibovespa com proventos (BOVA11)", "^GSPC": "S&P 500 (USD)", "BRL=X": "Dólar (BRL)", "IMAB11.SA": "IMA-B (proxy IPCA+)",
               "IRFM11.SA": "IRF-M (proxy pré)", "IVVB11.SA": "S&P 500 em BRL (IVVB11)"}
 HISTORY_YEARS = 3
 
@@ -56,7 +56,11 @@ def sync_market(s: Session, rl=None) -> dict:
         last = _last_date(s, AssetPrice, AssetPrice.date, AssetPrice.symbol, sym)
         start = (last - timedelta(days=5)) if last else start_default
         try:
-            rows = yahoo_history(sym, start)
+            # sem evento gravado ainda: busca o histórico todo uma vez para trazer os proventos antigos
+            ev_start = start if s.scalar(select(AssetEvent.symbol).where(AssetEvent.symbol == sym).limit(1)) \
+                or sym.startswith("^") or "=" in sym else start_default
+            rows, events = yahoo_chart(sym, min(start, ev_start))
+            rows = [(d, v) for d, v in rows if d >= start]
             existing = {p.date: p for p in s.scalars(select(AssetPrice).where(AssetPrice.symbol == sym,
                                                                                AssetPrice.date >= start))}
             for d, v in rows:
@@ -64,6 +68,14 @@ def sync_market(s: Session, rl=None) -> dict:
                     existing[d].close = v
                 else:
                     s.add(AssetPrice(symbol=sym, date=d, close=v, source="yahoo"))
+            have_ev = {(e.date, e.kind): e for e in s.scalars(select(AssetEvent).where(AssetEvent.symbol == sym))}
+            added: set = set()
+            for d, kind, val in events:
+                if (d, kind) in have_ev:
+                    have_ev[(d, kind)].value = val
+                elif (d, kind) not in added:
+                    s.add(AssetEvent(symbol=sym, date=d, kind=kind, value=val, source="yahoo"))
+                    added.add((d, kind))
             stats["yahoo"][sym] = len(rows)
             s.commit()
         except Exception as exc:  # noqa: BLE001

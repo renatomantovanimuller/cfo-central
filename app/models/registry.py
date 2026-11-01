@@ -106,6 +106,16 @@ class AssetPrice(Base):
     source: Mapped[str] = mapped_column(String(20), default="yahoo")
 
 
+class AssetEvent(Base):
+    """Proventos (valor por cota) e desdobramentos informados pela fonte de cotações, por data-com."""
+    __tablename__ = "asset_events"
+    symbol: Mapped[str] = mapped_column(String(30), primary_key=True)
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(10), primary_key=True)  # div | split
+    value: Mapped[float] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String(20), default="yahoo")
+
+
 class MarketSeries(Base):
     """Séries oficiais: CDI/Selic (% ao dia), IPCA (% ao mês)."""
     __tablename__ = "market_series"

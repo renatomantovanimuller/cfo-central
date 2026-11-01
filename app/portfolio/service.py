@@ -16,7 +16,8 @@ from app.config.settings import get_settings
 from app.models import (Asset, AssetPrice, FinancialEvent, Institution, Investment, InvestmentBalance,
                         InvestmentTransaction, Item)
 from app.portfolio import metrics as M
-from app.portfolio.classification import RISK_BUCKET, classify
+from app.portfolio.classification import FX_HEDGED, RISK_BUCKET, classify
+from app.portfolio.tracking_core import price_quality
 from app.portfolio.market import BENCHMARKS, accumulated, cdi_daily, ipca_accumulated, price_frame, series_frame
 from app.utils.time import today_brt
 
@@ -67,18 +68,24 @@ def positions(s: Session) -> list[dict]:
             continue
         a = assets.get(inv.asset_id)
         bal = inv.balance or 0.0
+        gross = inv.amount if inv.amount else bal
         cost = inv.amount_original
         profit = inv.amount_profit if inv.amount_profit is not None else (bal - cost if cost else None)
         start = inv.purchase_date or inv.issue_date
         ret = (bal / cost - 1) if cost else None
+        ret_gross = (gross / cost - 1) if cost else None
         ann = None
-        pct_cdi = None
+        pct_cdi = pct_cdi_net = None
         if ret is not None and start and (today - start).days >= 30:
             yrs = (today - start).days / 365.0
             ann = (1 + ret) ** (1 / yrs) - 1 if ret > -1 else None
             cdi_acc = accumulated(cdi, start, today) if not cdi.empty else None
-            if cdi_acc and cdi_acc > 0 and ret > -1:
-                pct_cdi = math.log(1 + ret) / math.log(1 + cdi_acc)
+            if cdi_acc and cdi_acc > 0:
+                # bruto: comparável à taxa contratada (CDB de 120% do CDI ≈ 1,20); líquido: o que sobra após o IR
+                if ret_gross is not None and ret_gross > -1:
+                    pct_cdi = math.log(1 + ret_gross) / math.log(1 + cdi_acc)
+                if ret > -1:
+                    pct_cdi_net = math.log(1 + ret) / math.log(1 + cdi_acc)
         out.append({
             "id": inv.id, "name": inv.name, "code": inv.code, "isin": inv.isin, "type": inv.type,
             "subtype": inv.subtype, "institution": items.get(inv.item_id, ""),
@@ -88,7 +95,8 @@ def positions(s: Session) -> list[dict]:
             "fgc_covered": bool(a.fgc_covered) if a else False, "yahoo_symbol": a.yahoo_symbol if a else None,
             "risk_proxy": a.risk_proxy if a else "CDI", "asset_id": inv.asset_id,
             "balance": bal, "gross": inv.amount, "cost": cost, "profit": profit, "return_total": ret,
-            "return_ann": ann, "pct_cdi": pct_cdi, "quantity": inv.quantity, "unit_price": inv.value,
+            "return_ann": ann, "pct_cdi": pct_cdi, "pct_cdi_liquido": pct_cdi_net, "return_gross": ret_gross,
+            "quantity": inv.quantity, "unit_price": inv.value, "fx_hedged": (inv.code or "").upper() in FX_HEDGED,
             "rate": inv.rate, "rate_type": inv.rate_type, "fixed_rate": inv.fixed_annual_rate,
             "last_12m_rate": inv.last_12m_rate, "due_date": inv.due_date, "purchase_date": start,
             "taxes": (inv.taxes or 0) + (inv.taxes2 or 0),
@@ -109,7 +117,7 @@ def allocation(pos: list[dict]) -> dict:
         return [{"label": k, "value": v, "pct": v / total if total else 0}
                 for k, v in sorted(agg.items(), key=lambda kv: -kv[1])]
 
-    usd = sum(p["balance"] for p in pos if p["asset_class"] in ("ETF Internacional",))
+    usd = sum(p["balance"] for p in pos if p["asset_class"] in ("ETF Internacional",) and not p.get("fx_hedged"))
     weights = pd.Series({p["id"]: p["balance"] for p in pos}, dtype=float)
     top5 = float(weights.sort_values(ascending=False).head(5).sum() / total) if total else 0
     return {
@@ -159,20 +167,59 @@ def asset_returns(s: Session, pos: list[dict], start: date) -> pd.DataFrame:
     if sf.empty or "CDI" not in sf:
         return pd.DataFrame()
     idx = sf.index
-    symbols = sorted({p["risk_proxy"] for p in pos if p["risk_proxy"] and any(c in p["risk_proxy"] for c in ".^=")})
+    symbols = sorted({p["risk_proxy"] for p in pos if p["risk_proxy"] and any(c in p["risk_proxy"] for c in ".^=")}
+                     | {x for x in RISK_FALLBACK.values() if x})
     prices = price_frame(s, symbols, start - timedelta(days=10))
-    cols = {}
+    raw = {sym: dict(zip(rows.index, rows.values)) for sym, rows in
+           ((sym, price_frame_raw(s, sym, start - timedelta(days=30))) for sym in symbols)}
+    clean_from = {sym: price_quality(px, start)[0] for sym, px in raw.items() if px}
+
+    def rets_of(sym: str) -> pd.Series | None:
+        if sym not in prices:
+            return None
+        px = prices[sym].reindex(prices.index.union(idx)).sort_index().ffill().reindex(idx)
+        r = clean_returns(px.pct_change())
+        cf = clean_from.get(sym, start)
+        if cf is None:
+            return None
+        return r.where(pd.Series(idx, index=idx) >= cf)
+
+    cols, proxies = {}, set()
+    cdi_base = sf["CDI"] / 100
     for p in pos:
         proxy = p["risk_proxy"] or "CDI"
         if proxy in ("CDI", "SELIC"):
             base = sf[proxy if proxy in sf else "CDI"] / 100
             mult = (p["rate"] / 100) if p["indexer"] == "CDI" and p["rate"] and p["rate"] > 10 else 1.0
             cols[p["id"]] = base * mult
-        elif proxy in prices:
-            px = prices[proxy].reindex(prices.index.union(idx)).sort_index().ffill().reindex(idx)
-            cols[p["id"]] = clean_returns(px.pct_change())
+            continue
+        r = rets_of(proxy)
+        if r is None or r.notna().sum() < 20:
+            r = pd.Series(float("nan"), index=idx)
+        if r.isna().iloc[1:].any():  # histórico curto ou cotação defeituosa: completa com proxy declarado
+            fb = RISK_FALLBACK.get(p["asset_class"])
+            fr = rets_of(fb) if fb else None
+            if fr is not None and fr.notna().sum() >= 20:
+                r = r.fillna(fr)
+                proxies.add(f"{p['code'] or p['name']}: lacunas de cotação completadas com {fb}")
+            if r.iloc[1:].isna().any():
+                r = r.fillna(cdi_base)
+                proxies.add(f"{p['code'] or p['name']}: trechos sem cotação confiável usam o CDI (subestima o risco)")
+        cols[p["id"]] = r
     df = pd.DataFrame(cols, index=idx).iloc[1:]
+    df.attrs["proxies"] = sorted(proxies)
     return df.fillna(0.0)
+
+
+RISK_FALLBACK = {"ETF Internacional": "IVVB11.SA", "ETF Ações BR": "BOVA11.SA", "Ações BR": "BOVA11.SA",
+                 "ETF Renda Fixa": None, "FIIs": None, "Cripto": None}
+
+
+def price_frame_raw(s: Session, symbol: str, start: date) -> pd.Series:
+    """Fechamentos sem saneamento (para medir a qualidade da série)."""
+    rows = s.execute(select(AssetPrice.date, AssetPrice.close)
+                     .where(AssetPrice.symbol == symbol, AssetPrice.date >= start)).all()
+    return pd.Series({d: c for d, c in rows if c}, dtype=float).sort_index()
 
 
 def clean_returns(r: pd.Series, limit: float = 0.25) -> pd.Series:
@@ -193,8 +240,9 @@ def risk_report(s: Session, years: int = 2) -> dict:
     port = (rets[w.index] * w).sum(axis=1)
     cdi = cdi_daily(s, start).reindex(port.index).fillna(0)
     bench_px = price_frame(s, list(BENCHMARKS), start - timedelta(days=10))
-    ibov = clean_returns(bench_px["^BVSP"].reindex(bench_px.index.union(port.index)).ffill().reindex(port.index).pct_change()) \
-        if "^BVSP" in bench_px else None
+    ibov_sym = "BOVA11.SA" if "BOVA11.SA" in bench_px else "^BVSP"
+    ibov = clean_returns(bench_px[ibov_sym].reindex(bench_px.index.union(port.index)).ffill().reindex(port.index).pct_change()) \
+        if ibov_sym in bench_px else None
     stats = M.risk_stats(port, cdi, ibov)
 
     by_id = {p["id"]: p for p in pos}
@@ -218,7 +266,10 @@ def risk_report(s: Session, years: int = 2) -> dict:
 
     # curva acumulada vs benchmarks
     curves = {"Carteira (pesos atuais)": M.cumulative(port), "CDI": M.cumulative(cdi)}
-    for sym, label in (("^BVSP", "Ibovespa"), ("IVVB11.SA", "S&P 500 em BRL"), ("IMAB11.SA", "IMA-B")):
+    for sym, label in ((ibov_sym, "Ibovespa" if ibov_sym == "BOVA11.SA" else "Ibovespa (só preço)"),
+                       ("IVVB11.SA", "S&P 500 em BRL"), ("IMAB11.SA", "IMA-B")):
+        if sym == "IMAB11.SA" and price_quality(dict(price_frame_raw(s, sym, start - timedelta(days=30))), start)[1]:
+            continue  # série com defeitos no período: melhor não mostrar a referência
         if sym in bench_px:
             b = clean_returns(bench_px[sym].reindex(bench_px.index.union(port.index)).ffill().reindex(port.index).pct_change().fillna(0))
             curves[label] = M.cumulative(b)
@@ -236,6 +287,7 @@ def risk_report(s: Session, years: int = 2) -> dict:
             "Risco ex-ante: pesos atuais aplicados ao histórico de retornos diários (não é o retorno que você obteve).",
             "Renda fixa pós usa CDI × % contratado; IPCA+ usa IMAB11 e pré usa IRFM11 como proxy de marcação.",
             *[f"Proxy — {x}" for x in proxies],
+            *rets.attrs.get("proxies", []),
         ],
     }
 

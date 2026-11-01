@@ -7,7 +7,24 @@ import { Chip, Empty, Money, Panel } from "../components/ui";
 import { signTone } from "../components/MoneyText";
 import { brl, date, pct } from "../format";
 import { Term } from "../components/Term";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import Performance from "./portfolio/Performance";
+import Income from "./portfolio/Income";
+import Rebalance from "./portfolio/Rebalance";
+
+const TABS: [string, string][] = [["geral", "Visão geral"], ["performance", "Performance"], ["proventos", "Proventos"],
+  ["rebalancear", "Rebalancear"], ["detalhes", "Risco e títulos"]];
+
+function PortfolioTabs({ tab, onChange }: { tab: string; onChange: (t: string) => void }) {
+  return (
+    <div style={{ overflowX: "auto", marginBottom: 14 }}>
+      <div className="segmented" role="tablist" aria-label="Seções da carteira">
+        {TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""}
+          onClick={() => onChange(k)}>{l}</button>)}
+      </div>
+    </div>
+  );
+}
 
 const GROUPS: [string, string][] = [["by_class", "Classe"], ["by_bucket", "Estratégia"], ["by_indexer", "Indexador"],
   ["by_liquidity", "Liquidez"], ["by_institution", "Instituição"], ["by_issuer", "Emissor"]];
@@ -16,6 +33,9 @@ export default function Portfolio() {
   const [group, setGroup] = useState("by_class");
   const [years, setYears] = useState(2);
   const nav = useNavigate();
+  const [sp, setSp] = useSearchParams();
+  const tab = sp.get("aba") ?? "geral";
+  const setTab = (k: string) => setSp(k === "geral" ? {} : { aba: k }, { replace: true });
   const q = useQuery({ queryKey: ["portfolio"], queryFn: () => api<any>("/api/portfolio") });
   const r = useQuery({ queryKey: ["risk", years], queryFn: () => api<any>(`/api/portfolio/risk?years=${years}`) });
   const d = q.data;
@@ -29,6 +49,11 @@ export default function Portfolio() {
   const perf = d.performance;
   return (
     <>
+      <PortfolioTabs tab={tab} onChange={setTab} />
+      {tab === "performance" && <Performance />}
+      {tab === "proventos" && <Income />}
+      {tab === "rebalancear" && <Rebalance />}
+      {tab === "geral" && <>
       <section className="panel strip">
         <div><div className="lbl">Patrimônio investido</div><div className="val num" style={{ textAlign: "left" }}>{brl(a.total)}</div>
           <div className="sub">{d.positions.length} posições, <Term k="posicoes_efetivas">{a.concentration.effective_n.toFixed(1).replace(".", ",")} efetivas</Term></div></div>
@@ -73,7 +98,7 @@ export default function Portfolio() {
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.label}</span>
               <span className="num soft">{pct(x.pct)}</span><Money v={x.value} />
             </div>))}
-          <p className="note">Top 5 posições: {pct(a.concentration.top5, 0)}; exposição a dólar: {pct(a.concentration.usd_exposure, 0)}.</p>
+          <p className="note">Top 5 posições: {pct(a.concentration.top5, 0)}; exposição a dólar: {pct(a.concentration.usd_exposure, 0)} (ETFs com proteção cambial não contam).</p>
         </Panel>
       </div>
 
@@ -92,7 +117,7 @@ export default function Portfolio() {
                 <td className="num">{pct(p.weight)}</td>
                 <td>{p.cost ? <Money v={p.cost} /> : <span className="muted small">não informado</span>}</td>
                 <td>{p.profit !== null ? <><Money v={p.profit} tone={signTone(p.profit)} /><div className="num small soft">{pct(p.return_total)}</div></> : <span className="muted">—</span>}</td>
-                <td className="num">{pct(p.pct_cdi, 0)}</td>
+                <td className="num" title={p.pct_cdi_liquido ? `Líquido de IR: ${pct(p.pct_cdi_liquido, 0)} do CDI` : undefined}>{pct(p.pct_cdi, 0)}</td>
                 <td className="soft small hide-sm">{p.indexer === "CDI" && p.rate ? `${p.rate}% CDI` : p.indexer === "IPCA" && p.fixed_rate ? `IPCA + ${p.fixed_rate}%` : p.indexer ?? ""}</td>
                 <td className="soft hide-sm">{date(p.due_date)}</td>
               </tr>))}</tbody>
@@ -127,6 +152,8 @@ export default function Portfolio() {
         </Panel>
       </div>
 
+      </>}
+      {tab === "detalhes" && <>
       <div className="grid g2">
         <Panel title="Correlação entre classes" hint="1 = sobem e descem juntas; 0 = sem relação; negativo = uma compensa a outra">
           {r.data?.correlation ? (
@@ -166,6 +193,7 @@ export default function Portfolio() {
               <td className="num hide-sm">{m.quantity?.toLocaleString("pt-BR")}</td><td className="num hide-sm">{m.value?.toLocaleString("pt-BR")}</td><td><Money v={m.amount} /></td></tr>))}</tbody>
         </table></div>
       </Panel>}
+      </>}
     </>
   );
 }

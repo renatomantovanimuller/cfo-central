@@ -2,7 +2,7 @@ from app.models.source import (Institution, Item, RawPayload, SyncEvent, SyncRun
                                WebhookEvent)
 from app.models.finance import (Account, AccountBalance, CreditCardBill, IdentityRecord,  # noqa: F401
                                 Investment, InvestmentBalance, InvestmentTransaction, Loan, Transaction)
-from app.models.registry import (AccountSetting, AllocationTarget, AppSetting, Asset, AssetPrice, Budget, Category,  # noqa: F401
+from app.models.registry import (AccountSetting, AllocationTarget, AppSetting, Asset, AssetEvent, AssetPrice, Budget, Category,  # noqa: F401
                                  CategoryRule, FinancialGoal, ManualAsset, MarketSeries, Merchant,
                                  HealthRun, MerchantAlias, NotificationLog, PluggyCategory, PluggyCategoryMap,
                                  RecurringRule)

@@ -35,7 +35,7 @@ def auth_status(request: Request) -> dict:
 
 def _login(response: Response, username: str) -> None:
     response.set_cookie(COOKIE, issue_token(username), httponly=True, samesite="strict",
-                        max_age=get_settings().session_hours * 3600)
+                        secure=get_settings().cookie_secure, max_age=get_settings().session_hours * 3600)
 
 
 @public.post("/auth/setup")

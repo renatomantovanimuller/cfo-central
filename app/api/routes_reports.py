@@ -83,6 +83,24 @@ def portfolio_realized(db: Session = Depends(get_db)) -> dict:
     return {"renda_fixa": fixed_income_titles(db), "renda_variavel": equity_lots(db)}
 
 
+@router.get("/portfolio/performance")
+def portfolio_performance(years: int = 3, db: Session = Depends(get_db)) -> dict:
+    from app.portfolio.tracking import performance_report
+    return P._clean(performance_report(db, max(1, min(years, 3))))
+
+
+@router.get("/portfolio/income")
+def portfolio_income(db: Session = Depends(get_db)) -> dict:
+    from app.portfolio.income import income_report
+    return P._clean(income_report(db))
+
+
+@router.get("/portfolio/rebalance")
+def portfolio_rebalance(aporte: float | None = None, db: Session = Depends(get_db)) -> dict:
+    from app.portfolio.rebalance import suggest
+    return P._clean(suggest(db, aporte))
+
+
 @router.get("/alerts/status")
 def alerts_status(db: Session = Depends(get_db)) -> dict:
     from app.alerts.notify import status

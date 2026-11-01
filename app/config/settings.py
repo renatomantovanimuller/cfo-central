@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://cfo:cfo@localhost:5432/cfo"
     secret_key: str = Field(default="troque-esta-chave", min_length=8)
     session_hours: int = 12
+    cookie_secure: bool = False  # true quando servido por HTTPS (ex.: tailscale serve na nuvem)
     public_url: str = ""  # habilita webhookUrl no connect token
     frontend_dist: Path = ROOT / "frontend" / "dist"
     timezone: str = "America/Sao_Paulo"

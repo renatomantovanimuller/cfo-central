@@ -315,6 +315,44 @@ def carteira(incluir_risco: bool = False, anos_risco: int = 2) -> dict:
 
 
 @mcp.tool()
+def performance_carteira(agrupar_por: Literal["total", "instituicao", "classe", "ativo"] = "classe",
+                         periodo: Literal["mes", "3m", "6m", "ano", "12m", "inicio"] = "12m") -> dict:
+    """Retorno da carteira por período: TWR bruto de IR, ganho em R$, aportes líquidos, TIR e % do CDI, agrupado por
+    instituição, classe ou ativo, com CDI, IPCA, Ibovespa (com proventos) e S&P 500 em BRL no mesmo período.
+    Antes do 1º saldo coletado o valor é reconstruído (campo `reconstruido`); variações sem explicação viram
+    fluxos inferidos (listados), nunca ganho ou perda."""
+    with _db() as db:
+        rep = R.portfolio_performance(years=3, db=db)
+        if not rep.get("available"):
+            return _plain(rep)
+        key = {"total": "total", "instituicao": "por_instituicao", "classe": "por_classe", "ativo": "por_ativo"}[agrupar_por]
+        rows = rep[key] if isinstance(rep[key], list) else [rep[key]]
+        linhas = [{"nome": r["nome"], "valor": r["valor"], "peso": r.get("peso"), **(r["periodos"].get(periodo) or {})}
+                  for r in rows]
+        return _plain({"periodo": periodo, "janela": [rep["inicio"], rep["fim"]], "linhas": linhas,
+                       "referencias": rep["referencias"].get(periodo), "notas": rep["notas"],
+                       "fluxos_inferidos": rep["fluxos_inferidos"][:10], "premissas": rep["premissas"]})
+
+
+@mcp.tool()
+def proventos() -> dict:
+    """Proventos recebidos (por mês e por ativo, 12 e 24 meses), dividend yield e yield on cost, proventos
+    informados pela fonte de cotações (próximas datas-com) e renda passiva mensal estimada (renda fixa + proventos)."""
+    with _db() as db:
+        out = _plain(R.portfolio_income(db=db))
+        out["recebidos"] = out.get("recebidos", [])[:20]
+        return out
+
+
+@mcp.tool()
+def sugerir_aporte(valor: float | None = None) -> dict:
+    """Onde aplicar o próximo aporte para aproximar a carteira da alocação-alvo sem vender (reserva de emergência
+    primeiro) e o rebalanceamento completo com IR estimado. valor=None usa a meta de aporte do plano."""
+    with _db() as db:
+        return _plain(R.portfolio_rebalance(aporte=valor, db=db))
+
+
+@mcp.tool()
 def planejamento() -> dict:
     """Previsão de caixa (6 meses), capacidade de investimento, recorrências, orçamento do mês e metas."""
     with _db() as db:

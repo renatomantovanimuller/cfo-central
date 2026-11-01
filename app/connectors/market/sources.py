@@ -43,6 +43,11 @@ def sgs(code: int, start: date, end: date) -> list[tuple[date, float]]:
 
 
 def yahoo_history(symbol: str, start: date, end: date | None = None) -> list[tuple[date, float]]:
+    return yahoo_chart(symbol, start, end)[0]
+
+
+def yahoo_chart(symbol: str, start: date, end: date | None = None) -> tuple[list[tuple[date, float]], list[tuple[date, str, float]]]:
+    """(fechamentos ajustados, eventos). Eventos: (data-com, "div", valor por cota) e (data, "split", fator)."""
     end = end or date.today() + timedelta(days=1)
     p1 = int(datetime(start.year, start.month, start.day, tzinfo=timezone.utc).timestamp())
     p2 = int(datetime(end.year, end.month, end.day, tzinfo=timezone.utc).timestamp())
@@ -50,11 +55,11 @@ def yahoo_history(symbol: str, start: date, end: date | None = None) -> list[tup
         r = http.get(YAHOO_URL.format(symbol=symbol), params={
             "period1": p1, "period2": p2, "interval": "1d", "events": "div,splits", "includeAdjustedClose": "true"})
         if r.status_code == 404:
-            return []
+            return [], []
         r.raise_for_status()
         res = (r.json().get("chart") or {}).get("result") or []
     if not res:
-        return []
+        return [], []
     res = res[0]
     ts = res.get("timestamp") or []
     ind = res.get("indicators") or {}
@@ -68,4 +73,13 @@ def yahoo_history(symbol: str, start: date, end: date | None = None) -> list[tup
             continue
         d = datetime.fromtimestamp(t + gmtoff, tz=timezone.utc).date()
         out.append((d, float(v)))
-    return out
+    events = []
+    ev = res.get("events") or {}
+    for x in (ev.get("dividends") or {}).values():
+        if x.get("amount") is not None and x.get("date") is not None:
+            events.append((datetime.fromtimestamp(x["date"] + gmtoff, tz=timezone.utc).date(), "div", float(x["amount"])))
+    for x in (ev.get("splits") or {}).values():
+        num, den = x.get("numerator"), x.get("denominator")
+        if num and den and x.get("date") is not None:
+            events.append((datetime.fromtimestamp(x["date"] + gmtoff, tz=timezone.utc).date(), "split", float(num) / float(den)))
+    return out, events

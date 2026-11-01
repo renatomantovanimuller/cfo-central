@@ -19,7 +19,8 @@ from sqlalchemy.orm import Session
 
 from app.models import (Asset, AssetPrice, FinancialEvent, Investment, InvestmentBalance, InvestmentTransaction)
 from app.portfolio import metrics as M
-from app.portfolio.market import accumulated, cdi_daily
+from app.portfolio.market import accumulated, cdi_daily  # noqa: F401
+from app.portfolio.tracking_core import cdi_multiplier
 from app.utils.time import today_brt
 
 RV_TYPES = {"ETF", "EQUITY", "STOCK", "BDR", "REAL_ESTATE_FUND"}
@@ -40,6 +41,7 @@ def fixed_income_titles(s: Session) -> dict:
             txs[t.investment_id].append(t)
     first = min((t.date for v in txs.values() for t in v), default=today)
     cdi = cdi_daily(s, first - timedelta(days=10))
+    cdi_map = {d: float(v) for d, v in cdi.items()} if not cdi.empty else {}
     out = []
     for inv in s.scalars(select(Investment).where(Investment.removed_at.is_(None))):
         if _is_rv(inv):
@@ -78,12 +80,13 @@ def fixed_income_titles(s: Session) -> dict:
             resultado = resg_liq + bal - aplicado
             first_d = min(d for d, _ in flows)
             tir = M.xirr(flows) if (end - first_d).days >= 30 else None  # anualizar poucos dias distorce
-            # % do CDI: TIR do título ÷ CDI anualizado no mesmo período (aproximação ponderada no tempo)
-            acc = accumulated(cdi, first_d, end) if not cdi.empty else None
-            days = max((end - first_d).days, 1)
-            cdi_aa = (1 + acc) ** (365.0 / days) - 1 if acc is not None and days >= 5 else None
-            row.update(resultado=round(resultado, 2), tir_aa=tir,
-                       pct_cdi=(tir / cdi_aa) if tir is not None and cdi_aa and cdi_aa > 0 else None)
+            # % do CDI BRUTO: multiplicador k tal que os mesmos fluxos aplicados a k × CDI chegam ao valor bruto
+            # (comparável à taxa contratada: CDB de 120% do CDI ≈ 1,20). O líquido de IR fica na TIR.
+            gross_flows = [(t.date, abs(t.amount or t.net_amount or 0)) for t in buys] + \
+                          [(t.date, -abs(t.amount or 0)) for t in sells]
+            gross_end = (inv.amount if inv.amount is not None else bal) if bal > 0.005 else 0.0
+            k = cdi_multiplier(gross_flows, end, gross_end, cdi_map) if cdi_map else None
+            row.update(resultado=round(resultado, 2), tir_aa=tir, pct_cdi=k)
         else:
             row.update(resultado=None, tir_aa=None, pct_cdi=None)
         out.append(row)
@@ -97,8 +100,8 @@ def fixed_income_titles(s: Session) -> dict:
     }
     return {"titulos": sorted(out, key=lambda r: (r["status"] != "ativo", -(r["saldo"] or 0), str(r["inicio"]))),
             "totais": totals,
-            "nota": "Resultado = resgates líquidos + saldo − aplicações. % do CDI compara com aplicar os mesmos "
-                    "valores nas mesmas datas a 100% do CDI. Títulos aplicados antes do histórico da Pluggy (~12 meses) "
+            "nota": "Resultado = resgates líquidos + saldo − aplicações. % do CDI é bruto de IR: o multiplicador do CDI "
+                    "que, aplicado aos mesmos valores nas mesmas datas, chega ao valor bruto (comparável à taxa contratada). Títulos aplicados antes do histórico da Pluggy (~12 meses) "
                     "aparecem como parciais, sem resultado."}
 
 
