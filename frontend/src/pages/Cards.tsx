@@ -83,16 +83,16 @@ function BillCheck({ bills }: { bills: any[] }) {
       <summary className="note">{bad ? `${bad} ${bad === 1 ? "fatura não confere" : "faturas não conferem"}` : "Todas as faturas conferem com os lançamentos"}
         {dups ? ` · ${dups} pagamento${dups > 1 ? "s" : ""} repetido${dups > 1 ? "s" : ""} pela fonte, descartado${dups > 1 ? "s" : ""}` : ""}</summary>
       <div className="table-wrap" style={{ maxHeight: 320 }}>
-        <table className="table compact">
+        <table className="table compact cards-sm">
           <thead><tr><th>Vencimento</th><th className="num">Anterior</th><th className="num">Compras</th><th className="num hide-sm">Créditos</th>
             <th className="num">Pagamentos</th><th className="num">Total</th><th>Situação</th></tr></thead>
           <tbody>{bills.map((b) => {
             const [label, tone] = SITUACAO[b.situacao] ?? [b.situacao, undefined];
             return (
               <tr key={b.id} title={b.duplicados_descartados?.length ? `Descartado: ${b.duplicados_descartados.map((x: any) => `${x.descricao} ${brl(x.valor)} em ${date(x.data)}`).join("; ")}` : undefined}>
-                <td>{date(b.due_date)}</td><td><Money v={b.anterior} /></td><td><Money v={b.compras} /></td>
-                <td className="hide-sm"><Money v={b.creditos} /></td><td><Money v={b.pagamentos} /></td><td><Money v={b.total} /></td>
-                <td><Chip tone={tone}>{label}</Chip>{b.diferenca && Math.abs(b.diferenca) > 1 ? <div className="small neg">{brl(b.diferenca)}</div> : null}
+                <td><b>{date(b.due_date)}</b></td><td data-label="Anterior"><Money v={b.anterior} /></td><td data-label="Compras"><Money v={b.compras} /></td>
+                <td className="hide-sm" data-label="Créditos"><Money v={b.creditos} /></td><td data-label="Pagamentos"><Money v={b.pagamentos} /></td><td data-label="Total"><Money v={b.total} /></td>
+                <td data-label="Situação"><Chip tone={tone}>{label}</Chip>{b.diferenca && Math.abs(b.diferenca) > 1 ? <div className="small neg">{brl(b.diferenca)}</div> : null}
                   {b.duplicados_descartados?.length ? <div className="small muted">1 pagamento repetido descartado</div> : null}</td>
               </tr>);
           })}</tbody>

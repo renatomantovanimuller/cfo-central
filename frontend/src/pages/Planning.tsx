@@ -94,19 +94,19 @@ export default function Planning() {
 
       <div className="grid g2">
         <Panel title="Gastos recorrentes" hint={`${brl(annual, 0)} por ano`} flush>
-          <table className="table"><thead><tr><th>Descrição</th><th className="num">Valor</th><th>Próximo</th><th>Situação</th></tr></thead>
+          <table className="table cards-sm"><thead><tr><th>Descrição</th><th className="num">Valor</th><th>Próximo</th><th>Situação</th></tr></thead>
             <tbody>{out.map((r: any) => (
               <tr key={r.id}><td><div className="strong" title={r.description}>{prettyName(r.description)}</div><div className="small muted">{r.occurrences} meses, dia {r.day_of_month}</div></td>
-                <td><Money v={-r.expected_amount} /></td><td className="soft">{date(r.next_date)}</td>
-                <td>{r.status === "confirmed" ? <Chip tone="green">confirmado</Chip> : (
+                <td data-label="Valor"><Money v={-r.expected_amount} /></td><td className="soft" data-label="Próximo">{date(r.next_date)}</td>
+                <td data-label="Situação">{r.status === "confirmed" ? <Chip tone="green">confirmado</Chip> : (
                   <span className="toolbar" style={{ flexWrap: "nowrap" }}><button className="btn sm" onClick={() => recur.mutate({ id: r.id, status: "confirmed" })}>Confirmar</button>
                     <button className="btn sm ghost" onClick={() => recur.mutate({ id: r.id, status: "ignored" })}>Ignorar</button></span>)}</td></tr>))}
               {out.length === 0 && <tr><td colSpan={4} className="muted" style={{ padding: 16 }}>Recorrências aparecem após 3 meses de histórico.</td></tr>}</tbody></table>
         </Panel>
         <Panel title="Receitas recorrentes" flush>
-          <table className="table"><thead><tr><th>Origem</th><th className="num">Valor médio</th><th>Próximo</th></tr></thead>
+          <table className="table cards-sm"><thead><tr><th>Origem</th><th className="num">Valor médio</th><th>Próximo</th></tr></thead>
             <tbody>{inn.map((r: any) => (
-              <tr key={r.id}><td title={r.description}>{prettyName(r.description)}</td><td><Money v={r.expected_amount} /></td><td className="soft">{date(r.next_date)}</td></tr>))}
+              <tr key={r.id}><td title={r.description}>{prettyName(r.description)}</td><td data-label="Valor médio"><Money v={r.expected_amount} /></td><td className="soft" data-label="Próximo">{date(r.next_date)}</td></tr>))}
               {inn.length === 0 && <tr><td colSpan={3} className="muted" style={{ padding: 16 }}>Nenhuma detectada ainda.</td></tr>}</tbody></table>
           {d.budget.length > 0 && <div style={{ padding: "12px 18px" }}><h4 style={{ margin: "0 0 6px" }}>Orçamento do mês</h4>
             {d.budget.map((b: any) => (
@@ -133,14 +133,14 @@ export default function Planning() {
             ({brl(pol.reserva.custo_essencial_mensal, 0)}/mês). Mínimo definido: {pol.reserva.minimo_meses} meses.</p>
         </Panel>
         <Panel title="Política de investimentos" hint="alvos são seus; o app só mede o desvio (banda ± 5 p.p.)" flush>
-          <table className="table"><thead><tr><th>Classe</th><th className="num">Atual</th><th className="num">Alvo %</th><th>Situação</th><th className="num">Para o alvo</th></tr></thead>
+          <div className="table-wrap" style={{ maxHeight: "none" }}><table className="table"><thead><tr><th>Classe</th><th className="num">Atual</th><th className="num">Alvo %</th><th>Situação</th><th className="num">Para o alvo</th></tr></thead>
             <tbody>{pol.classes.map((c: any) => (
               <tr key={c.classe}><td>{c.classe}</td><td className="num">{pct(c.atual, 1)}<div className="small muted">{brl(c.valor, 0)}</div></td>
                 <td className="num"><NumberInput width={64} min={0} max={100} placeholder="—" ariaLabel={`Alvo % de ${c.classe}`} value={alvos[c.classe] ?? ""}
                   onChange={(v) => setAlvos({ ...alvos, [c.classe]: v })} /></td>
                 <td>{c.status === "ok" ? <Chip tone="green">na banda</Chip> : c.status === "sem alvo" ? <span className="muted small">sem alvo</span>
                   : <Chip tone="ochre">{c.status}</Chip>}</td>
-                <td className="num">{c.ajuste_para_alvo === null ? "—" : <Money v={c.ajuste_para_alvo} digits={0} />}</td></tr>))}</tbody></table>
+                <td className="num">{c.ajuste_para_alvo === null ? "—" : <Money v={c.ajuste_para_alvo} digits={0} />}</td></tr>))}</tbody></table></div>
           <div className="toolbar" style={{ padding: "10px 18px" }}>
             <span className={`small ${somaAlvos > 100.01 ? "neg" : "soft"}`}>Soma dos alvos: {somaAlvos.toFixed(1)}%</span>
             <button className="btn primary sm" disabled={somaAlvos > 100.01 || alvosInvalid || saveAlvos.isPending} onClick={() => saveAlvos.mutate(Object.entries(alvos).filter(([, v]) => v.trim() !== "").map(([k, v]) => ({ asset_class: k, target_pct: (parseBRL(v) ?? 0) / 100 })))}>Salvar alvos</button>

@@ -70,7 +70,7 @@ export default function DreGerencial() {
           <div className="sub">fora do resultado recorrente</div></div>
       </section>
 
-      <Panel title={<>DRE gerencial · {monthLong(month)} {d.parcial && <span className="chip ochre" style={{ marginLeft: 6 }}>mês em andamento</span>}</>} hint={`média de ${monthLabel(d.media_de[0])} a ${monthLabel(d.media_de[d.media_de.length - 1])}; clique numa categoria para ver os lançamentos`} flush>
+      <Panel title={<>DRE gerencial · {monthLong(month)} {d.parcial && <span className="chip ochre" style={{ marginLeft: 6 }}>mês em andamento</span>}</>} hint={`média de ${monthLabel(d.media_de[0])} a ${monthLabel(d.media_de[d.media_de.length - 1])}; clique numa categoria para ver os lançamentos`} flush className="dre-g">
         <div className="table-wrap" style={{ maxHeight: "none" }}>
           <table className="stmt">
             <thead><tr><th>Linha</th><th>{monthLabel(month)}</th><th>Média 6m</th><th>Δ vs média</th><th>% receita</th><th>Orçamento</th><th className="total-col">Acum. {month.slice(0, 4)}</th></tr></thead>

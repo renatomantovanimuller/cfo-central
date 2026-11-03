@@ -61,15 +61,15 @@ export default function Categories() {
             <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: c.color ?? "var(--rule-strong)", marginRight: 8 }} />
             <span className={child ? "soft" : "strong"}>{c.name}</span>
           </td>
-          <td className="soft small">{LINES[c.dre_line] ?? "—"}{c.essential ? "" : ""}</td>
-          <td><Spark values={c.series.map((v: number) => sign * v)} /></td>
+          <td className="soft small hide-sm">{LINES[c.dre_line] ?? "—"}</td>
+          <td className="hide-sm"><Spark values={c.series.map((v: number) => sign * v)} /></td>
           <td><Money v={cur} colored={false} /></td>
-          <td className="num soft">{brl(sign * c.avg3, 0)}</td>
+          <td className="num soft hide-sm">{brl(sign * c.avg3, 0)}</td>
           <td onClick={(e) => e.stopPropagation()} style={{ width: 200 }}>
             <AutoSaveMoney value={c.budget ?? null} placeholder="definir" ariaLabel={`Orçamento de ${c.name}`}
               onSave={(amount) => api(`/api/budgets/${c.id}`, { method: "PUT", body: { amount } })} />
           </td>
-          <td style={{ width: 160 }}>{use !== null && <div className="bar-row" style={{ gridTemplateColumns: "1fr 44px" }}>
+          <td className="hide-sm" style={{ width: 160 }}>{use !== null && <div className="bar-row" style={{ gridTemplateColumns: "1fr 44px" }}>
             <div className={`bar ${use > 1 ? "debit" : ""}`}><i style={{ width: `${Math.min(100, use * 100)}%`, background: use > 1 ? undefined : use > 0.85 ? "var(--ochre)" : undefined }} /></div>
             <span className="num small">{pct(use, 0)}</span></div>}</td>
         </tr>,
@@ -85,10 +85,10 @@ export default function Categories() {
           <button className={nature === "receita" ? "on" : ""} onClick={() => setNature("receita")}>Receitas</button></div>} flush>
         <div className="table-wrap" style={{ maxHeight: "none" }}>
           <table className="table">
-            <thead><tr><th>Categoria</th><th>Linha da DRE</th><th>6 meses</th><th className="num">Mês</th><th className="num">Média 3m</th><th>Orçamento</th><th>Uso</th></tr></thead>
+            <thead><tr><th>Categoria</th><th className="hide-sm">Linha da DRE</th><th className="hide-sm">6 meses</th><th className="num">Mês</th><th className="num hide-sm">Média 3m</th><th>Orçamento</th><th className="hide-sm">Uso</th></tr></thead>
             <tbody>{roots.flatMap((c) => row(c))}</tbody>
-            <tbody><tr><td className="strong">Total</td><td /><td /><td><Money v={totalCur} colored={false} /></td><td /><td className="num strong">{totalBudget ? brl(totalBudget) : ""}</td>
-              <td className="num small">{totalBudget ? pct(totalCur / totalBudget, 0) : ""}</td></tr></tbody>
+            <tbody><tr><td className="strong">Total</td><td className="hide-sm" /><td className="hide-sm" /><td><Money v={totalCur} colored={false} /></td><td className="hide-sm" /><td className="num strong">{totalBudget ? brl(totalBudget) : ""}</td>
+              <td className="num small hide-sm">{totalBudget ? pct(totalCur / totalBudget, 0) : ""}</td></tr></tbody>
           </table>
         </div>
       </Panel>

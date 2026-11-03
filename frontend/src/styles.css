@@ -229,7 +229,9 @@ pre.json { margin: 0; max-height: 280px; overflow: auto; font-size: var(--fs-mic
   /* menu vira gaveta lateral aberta pelo botão da barra superior */
   .mobilebar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--rule); background: var(--paper);
     position: sticky; top: 0; z-index: 30; }
-  .mobilebar .mobile-brand { font-size: 17px; font-weight: 750; color: var(--ledger); font-variation-settings: "wdth" 120; }
+  .mobilebar .mobile-title { flex: 1; min-width: 0; display: grid; line-height: 1.15; }
+  .mobilebar .mobile-title b { font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobilebar .mobile-title .sync-line { font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
   .mobilebar .chip { margin-left: auto; text-decoration: none; font-size: var(--fs-note); padding: 3px 9px; }
   .sidebar { position: fixed; inset: 0 auto 0 0; width: min(300px, 86vw); height: 100dvh; z-index: 50; transform: translateX(-102%);
     transition: transform .18s ease-out; box-shadow: var(--shadow-overlay); background: var(--paper); }
@@ -514,3 +516,66 @@ button.list-row.plain { border-bottom: 1px solid var(--rule); }
 .callout.warn { background: var(--warning-soft); border-color: color-mix(in srgb, var(--warning-fill) 40%, var(--border)); }
 fieldset.benefit { border: 1px solid var(--rule); border-radius: var(--r-lg); padding: 12px 14px; margin: 12px 0 0; min-width: 0; }
 fieldset.benefit .toolbar { align-items: flex-end; }
+
+/* ---------- cabeçalho: no celular, título e ações vão para a barra fixa; aqui ficam só os seletores de período ---------- */
+.top-actions { display: flex; gap: 12px; align-items: center; }
+@media (max-width: 860px) {
+  .topbar { position: static; padding-top: 10px; padding-bottom: 10px; gap: 8px; }
+  .topbar h1, .topbar .top-status, .topbar .top-actions { display: none !important; }
+  .topbar.bare { display: none; }
+  .topbar .month-picker { flex: 1 1 auto; }
+  .topbar .month-picker button.on { flex: 1; min-width: 0 !important; }
+  .mobilebar { padding: 6px 8px 6px 4px; gap: 4px; padding-top: calc(6px + env(safe-area-inset-top)); }
+  .mobilebar .btn { padding: 0 10px; }
+}
+
+/* ---------- celular: listas, filtros, revisão, demonstrativos ---------- */
+.filters-more { display: contents; }
+.filters-toggle, .day-sep { display: none; }
+.m-cat i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+@media (max-width: 860px) {
+  .filters-toggle { display: inline-flex; }
+  .filters-toggle.on { background: var(--ledger-soft); border-color: var(--ledger); }
+  .filters-more { display: none; }
+  .filters-more.open { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+  .filters-more.open > * { flex: 1 1 100%; max-width: 100%; }
+  .filters-more.open > .segmented, .filters-more.open > label { flex: 0 1 auto; }
+  .toolbar > .input:first-child { flex: 1 1 0 !important; min-width: 0; }
+
+  /* lançamentos: agrupados por dia, sem coluna de data */
+  .day-sep { display: table-row; }
+  .day-sep td { padding: 12px 16px 4px !important; font-size: var(--fs-note); font-weight: 650; color: var(--ink-2); background: var(--paper);
+    border-bottom: 1px solid var(--rule); text-transform: capitalize; }
+  .table tr.clickable td { padding-top: 10px; padding-bottom: 10px; }
+  .table tr.clickable td:first-child:not(.hide-sm), .table .desc { padding-left: 16px; }
+  .table tr.clickable td:last-child:not(.hide-sm) { padding-right: 16px; }
+
+  /* revisão: texto em largura total, ações embaixo */
+  .review-row { flex-direction: column; align-items: stretch !important; gap: 8px; padding: 12px 16px !important; }
+  .review-row > .toolbar { justify-content: flex-start; }
+  .review-row .toolbar .cp-trigger.cp-field { flex: 1 1 100%; }
+  .review-row .toolbar .select { flex: 1 1 auto; }
+
+  .panel-head h2 { white-space: normal; }
+  .panel-head .hint { flex-basis: 100%; }
+  .stmt td:first-child { min-width: 150px; max-width: 190px; white-space: normal; }
+  .dre-g .stmt th:nth-child(n+4), .dre-g .stmt td:nth-child(n+4) { display: none; }
+  .table.cards-sm .input, .table.cards-sm .select { width: 100%; max-width: 100%; }
+  .drawer { width: 100vw; }
+  .drawer .body { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+  .btn, .select, .input { min-height: 38px; }
+  .btn.sm { min-height: 32px; }
+}
+@media (max-width: 640px) {
+  .table.cards-sm td.cell-wide, .table.cards-sm td:has(.btn), .table.cards-sm td:has(.cp-trigger) { grid-column: 1 / -1; }
+  .table.cards-sm td .toolbar { flex-wrap: wrap !important; }
+  .table.cards-sm .cp-trigger.cp-inline { border-color: var(--rule-strong); background: var(--sheet); height: 34px; max-width: 100%; width: 100%; }
+}
+@media (max-width: 860px) {
+  /* a célula de descrição ocupa o que sobra e corta com reticências, sem empurrar o valor para fora da tela */
+  .table .desc { max-width: 0; width: 100%; }
+  .table .desc > div:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .table td:has(> .money), .table td.num { white-space: nowrap; }
+}
+/* subtítulos com reticências não alargam a tabela: ocupam a largura que a célula tiver */
+.table .desc .s { width: 0; min-width: 100%; }

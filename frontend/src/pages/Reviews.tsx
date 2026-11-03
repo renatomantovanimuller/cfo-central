@@ -112,7 +112,7 @@ function ReviewRow({ r, onAct, nav, open, onOpenTx }: { r: any; onAct: (b: any) 
     && !["duplicate", "anomaly"].includes(r.kind);
   const isExit = r.kind === "exit_no_counterpart";
   return (
-    <div className="list-row" style={{ padding: "10px 18px", alignItems: "flex-start" }}>
+    <div className="list-row review-row" style={{ padding: "10px 18px", alignItems: "flex-start" }}>
       <div className="grow">
         <div className="t" style={{ whiteSpace: "normal" }}><Chip tone={tone}>{r.severity === "high" ? "urgente" : r.severity === "warn" ? "atenção" : "info"}</Chip> {r.title}</div>
         <div className="s" style={{ marginTop: 3, whiteSpace: "normal" }}>{r.detail}</div>

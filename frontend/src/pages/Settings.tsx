@@ -69,13 +69,13 @@ export default function SettingsPage() {
       <BenefitsPanel />
 
       <Panel title="Contas" hint="apelidos e o que entra no patrimônio" flush>
-        <table className="table"><thead><tr><th>Conta</th><th>Apelido</th><th>Finalidade</th><th>No patrimônio</th></tr></thead>
+        <table className="table cards-sm"><thead><tr><th>Conta</th><th>Apelido</th><th>Finalidade</th><th>No patrimônio</th></tr></thead>
           <tbody>{accounts.map((a: any) => (
             <tr key={a.id}><td>{a.name} <span className="muted small">{a.inst}</span></td>
-              <td><AutoSaveText value={a.nickname ?? ""} placeholder={a.name} ariaLabel={`Apelido de ${a.name}`} onSave={(v) => saveAcc(a.id, { nickname: v })} /></td>
-              <td><AutoSaveSelect value={a.purpose ?? ""} onSave={(v) => saveAcc(a.id, { purpose: v })}>
+              <td data-label="Apelido"><AutoSaveText value={a.nickname ?? ""} placeholder={a.name} ariaLabel={`Apelido de ${a.name}`} onSave={(v) => saveAcc(a.id, { nickname: v })} /></td>
+              <td data-label="Finalidade"><AutoSaveSelect value={a.purpose ?? ""} onSave={(v) => saveAcc(a.id, { purpose: v })}>
                 <option value="">—</option><option value="corrente">Dia a dia</option><option value="reserva">Reserva</option><option value="cartao">Cartão principal</option><option value="outro">Outro</option></AutoSaveSelect></td>
-              <td><AutoSaveCheck checked={!!a.include_in_net_worth} ariaLabel="Incluir no patrimônio" onSave={(v) => saveAcc(a.id, { include_in_net_worth: v })} /></td>
+              <td data-label="No patrimônio"><AutoSaveCheck checked={!!a.include_in_net_worth} ariaLabel="Incluir no patrimônio" onSave={(v) => saveAcc(a.id, { include_in_net_worth: v })} /></td>
             </tr>))}</tbody></table>
       </Panel>
       <Panel title="Ativos e classificação" hint="corrija classe, ticker ou proxy de risco; sua escolha não é sobrescrita" flush>

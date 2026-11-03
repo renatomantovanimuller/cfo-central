@@ -2,9 +2,9 @@ import { QueryState } from "../components/QueryState";
 import { useQuery } from "@tanstack/react-query";
 import { useApiMutation } from "../hooks/useApiMutation";
 import { undoCategoryBody } from "../components/undoCategory";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Wand2 } from "lucide-react";
+import { SlidersHorizontal, Wand2 } from "lucide-react";
 import { api, qs } from "../api";
 import { EventDrawer } from "../components/EventDrawer";
 import { useMonth } from "../components/Layout";
@@ -26,6 +26,7 @@ export default function Ledger() {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [qText, setQText] = useState(sp.get("q") ?? "");
+  const [showFilters, setShowFilters] = useState(false);
   const allMonths = sp.get("all") === "1";
   // intervalo explícito (vindo de Gastos ou do calendário) vence a janela do topo; janela > 1 mês vira intervalo
   const spStart = sp.get("start"), spEnd = sp.get("end");
@@ -77,6 +78,9 @@ export default function Ledger() {
         <div className="toolbar">
           <input className="input" style={{ flex: "1 1 240px" }} placeholder="Buscar descrição, contraparte ou nota" value={qText}
             onChange={(e) => setQText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && set("q", qText)} onBlur={() => set("q", qText)} />
+          <button className={`btn filters-toggle ${showFilters ? "on" : ""}`} aria-expanded={showFilters} onClick={() => setShowFilters((v) => !v)}>
+            <SlidersHorizontal size={14} /> Filtros{activeChips.length ? ` (${activeChips.length})` : ""}</button>
+          <div className={`filters-more ${showFilters ? "open" : ""}`}>
           <select className="select" value={filters.account ?? ""} onChange={(e) => set("account", e.target.value)}>
             <option value="">Todas as contas</option>
             {accounts.map((a: any) => <option key={a.id} value={a.id}>{a.nickname ?? a.name} ({a.inst})</option>)}
@@ -91,6 +95,7 @@ export default function Ledger() {
             <input type="checkbox" checked={allMonths} onChange={(e) => set("all", e.target.checked ? "1" : "")} /> todos os meses</label>
           <label className="soft small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <input type="checkbox" checked={!!filters.review} onChange={(e) => set("review", e.target.checked ? "true" : "")} /> só a revisar</label>
+          </div>
         </div>
         {activeChips.length > 0 && <div className="toolbar" style={{ marginTop: 10 }}>
           {activeChips.map(([k, l]) => <button key={k} className="chip green" style={{ border: 0, cursor: "pointer" }} onClick={() => { if (k === "start") sp.delete("end"); set(k); }}>{l} ✕</button>)}
@@ -114,16 +119,18 @@ export default function Ledger() {
                 <th style={{ width: 28 }} className="hide-sm"><input type="checkbox" aria-label="Selecionar página"
                   checked={!!d && d.items.length > 0 && d.items.every((r: any) => sel.has(r.id))}
                   onChange={(e) => setSel(e.target.checked ? new Set(d.items.map((r: any) => r.id)) : new Set())} /></th>
-                <th>Data</th><th>Descrição</th><th className="hide-sm">Conta</th><th className="hide-sm">Categoria</th><th className="hide-sm">Tipo</th><th className="hide-sm"><Term k="confianca">Confiança</Term></th><th className="num">Valor</th><th className="hide-sm" />
+                <th className="hide-sm">Data</th><th>Descrição</th><th className="hide-sm">Conta</th><th className="hide-sm">Categoria</th><th className="hide-sm">Tipo</th><th className="hide-sm"><Term k="confianca">Confiança</Term></th><th className="num">Valor</th><th className="hide-sm" />
               </tr></thead>
               <tbody>
-                {d?.items.map((r: any) => (
-                  <tr key={r.id} className="clickable" onClick={() => setOpen(r.id)} style={{ opacity: r.is_removed ? .5 : 1 }}>
+                {d?.items.map((r: any, i: number) => (
+                  <Fragment key={r.id}>
+                  {(i === 0 || d.items[i - 1].date !== r.date) && <tr className="day-sep"><td colSpan={9}>{dayLabel(r.date)}</td></tr>}
+                  <tr className="clickable" onClick={() => setOpen(r.id)} style={{ opacity: r.is_removed ? .5 : 1 }}>
                     <td className="hide-sm" onClick={(e) => e.stopPropagation()}>{r.rule_source !== "benefit" && <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} aria-label="Selecionar" />}</td>
-                    <td className="num" style={{ textAlign: "left" }}>{date(r.date)}</td>
+                    <td className="num hide-sm" style={{ textAlign: "left" }}>{date(r.date)}</td>
                     <td className="desc"><div title={r.description ?? undefined}>{prettyName((r.description ?? "").split("|")[0])} {r.installment && <Chip>{r.installment}</Chip>} {r.is_pending && <Chip tone="ochre">pendente</Chip>} {r.needs_review && <Chip tone="ochre">revisar</Chip>}</div>
                       <div className="s" title={r.counterparty ?? undefined}>{r.counterparty ? prettyName(r.counterparty) : (r.description ?? "").split("|")[1] ?? ""}{r.note ? `; ${r.note}` : ""}</div>
-                      <div className="s show-sm">{r.category ?? "sem categoria"}</div></td>
+                      <div className="s show-sm m-cat"><i style={{ background: r.color ?? "var(--rule-strong)" }} />{r.category ?? "sem categoria"}{r.account ? ` · ${r.account}` : ""}</div></td>
                     <td className="soft hide-sm" style={{ whiteSpace: "nowrap" }}>{r.account}</td>
                     <td className="hide-sm" onClick={(e) => e.stopPropagation()}>
                       {r.rule_source === "benefit" ? <span className="soft" title="Gerado pelo benefício informado em Configurações">{r.category} · benefício</span> :
@@ -136,6 +143,7 @@ export default function Ledger() {
                       <button className="btn ghost sm" title="Criar regra a partir deste lançamento"
                         onClick={() => nav(`/regras?pattern=${encodeURIComponent(r.counterparty || r.description)}&category=${r.category_id ?? ""}&field=${r.counterparty ? "merchant" : "description"}`)}><Wand2 size={14} /></button></td>
                   </tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -157,4 +165,15 @@ export default function Ledger() {
 function lastDay(ym: string) {
   const [y, m] = ym.split("-").map(Number);
   return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+}
+
+const WEEK = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+/** Cabeçalho do dia na lista do celular: "Hoje", "Ontem" ou "qua, 28/10". */
+function dayLabel(iso: string) {
+  const d = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  const t = new Date(); t.setHours(12, 0, 0, 0);
+  const diff = Math.round((t.getTime() - d.getTime()) / 86400000);
+  if (diff === 0) return "Hoje";
+  if (diff === 1) return "Ontem";
+  return `${WEEK[d.getDay()]}, ${date(iso).slice(0, diff < 300 && d.getFullYear() === t.getFullYear() ? 5 : 10)}`;
 }

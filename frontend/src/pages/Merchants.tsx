@@ -28,20 +28,20 @@ export default function Merchants() {
         <div className="segmented">{[3, 12, 24].map((x) => <button key={x} className={months === x ? "on" : ""} onClick={() => setMonths(x)}>{x}m</button>)}</div>
       </>}>
       <div className="table-wrap">
-        <table className="table">
+        <table className="table cards-sm">
           <thead><tr><th>Nome</th><th>Documento</th><th className="num">Lançamentos</th><th className="num">Ticket médio</th>
             <th className="num">Total</th><th className="num">% do total</th><th>Último</th><th>Categoria padrão</th></tr></thead>
           <tbody>
             {rows.map((m) => (
               <tr key={m.id} className="clickable" onClick={() => nav(`/razao?merchant=${m.id}&all=1`)}>
                 <td className="strong" title={m.name}>{prettyName(m.name)}</td>
-                <td className="soft small">{m.doc ? (m.doc.length === 14 ? "CNPJ " : "CPF ") + m.doc : "—"}</td>
-                <td className="num">{m.count}</td>
-                <td><Money v={m.avg_ticket} /></td>
-                <td><Money v={m.total} /></td>
-                <td className="num soft">{total ? ((m.total / total) * 100).toFixed(1).replace(".", ",") + "%" : ""}</td>
-                <td className="soft">{date(m.last)}</td>
-                <td onClick={(e) => e.stopPropagation()}>
+                <td className="soft small hide-sm">{m.doc ? (m.doc.length === 14 ? "CNPJ " : "CPF ") + m.doc : "—"}</td>
+                <td className="num" data-label="Lançamentos">{m.count}</td>
+                <td data-label="Ticket médio"><Money v={m.avg_ticket} /></td>
+                <td data-label="Total"><Money v={m.total} /></td>
+                <td className="num soft hide-sm">{total ? ((m.total / total) * 100).toFixed(1).replace(".", ",") + "%" : ""}</td>
+                <td className="soft hide-sm">{date(m.last)}</td>
+                <td className="cell-wide" data-label="Categoria padrão" onClick={(e) => e.stopPropagation()}>
                   <CategoryPicker variant="inline" value={m.category_origin === "user" ? m.category_id ?? "" : ""}
                     clearLabel={m.category ? `Automático: ${m.category}` : "Automático"}
                     onChange={(v) => patch.mutate({ id: m.id, body: { default_category_id: v } })} />

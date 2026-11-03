@@ -111,13 +111,27 @@ export function Layout() {
   const logout = async () => { await api("/api/auth/logout", { method: "POST" }); location.reload(); };
   const title = TITLES[loc.pathname] ?? "CFO Central";
   const last = sync.data?.last_ok_at ?? null;
+  const status = running ? `Sincronizando: ${sync.data?.step ?? ""}` : last ? `Atualizado ${dateTime(last)}` : noConnection ? "Nenhum banco conectado" : "Aguardando primeira sincronização";
+  const bare = MONTHLESS.has(loc.pathname) && !WINDOWED.has(loc.pathname);
+  const privacyBtn = (
+    <button className="btn ghost" onClick={togglePrivate} aria-pressed={hidden} title={hidden ? "Mostrar valores (Shift+P)" : "Ocultar valores (Shift+P)"}
+      aria-label={hidden ? "Mostrar valores" : "Ocultar valores"}>{hidden ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+  );
+  const syncBtn = noConnection
+    ? <NavLink className="btn primary" to="/conexoes" aria-label="Conectar banco"><PlugZap size={14} /> <span className="hide-sm">Conectar banco</span></NavLink>
+    : <button className="btn" onClick={() => startSync.mutate()} disabled={running} title="Buscar novidades nos bancos agora" aria-label="Sincronizar">
+        <RefreshCw size={14} className={running ? "spin" : ""} /> <span className="hide-sm">Sincronizar</span></button>;
 
   return (
     <div className={`shell ${menuOpen ? "menu-open" : ""}`}>
       <div className="mobilebar">
         <button className="btn ghost" onClick={() => setMenuOpen(true)} aria-label="Abrir menu" aria-expanded={menuOpen}><Menu size={18} /></button>
-        <b className="mobile-brand">CFO Central</b>
-        {reviewCount > 0 && <NavLink to="/revisao" className="chip ochre" aria-label={`${reviewCount} decisões pendentes`}>{reviewCount} para decidir</NavLink>}
+        <div className="mobile-title">
+          <b>{title}</b>
+          <span className="sync-line"><span className={`dot ${running ? "run" : noConnection ? "idle" : ""}`} />{status}</span>
+        </div>
+        {privacyBtn}
+        {syncBtn}
       </div>
       {menuOpen && <div className="nav-backdrop" onClick={() => setMenuOpen(false)} />}
       <nav className="sidebar" aria-label="Navegação">
@@ -143,7 +157,7 @@ export function Layout() {
         </div>}
       </nav>
       <div className="main">
-        <header className="topbar">
+        <header className={`topbar ${bare ? "bare" : ""}`}>
           <h1>{title}</h1>
           {!MONTHLESS.has(loc.pathname) && (
             <div className="segmented month-picker" role="group" aria-label="Mês">
@@ -160,16 +174,10 @@ export function Layout() {
           )}
           {WINDOWED.has(loc.pathname) && win !== "1" && <span className="sync-line range-line">{monthLabel(start)} a {monthLabel(month)}</span>}
           <div className="spacer" />
-          <span className="sync-line">
-            <span className={`dot ${running ? "run" : noConnection ? "idle" : ""}`} />
-            {running ? `Sincronizando: ${sync.data?.step ?? ""}` : last ? `Atualizado ${dateTime(last)}` : noConnection ? "Nenhum banco conectado" : "Aguardando primeira sincronização"}
+          <span className="sync-line top-status">
+            <span className={`dot ${running ? "run" : noConnection ? "idle" : ""}`} />{status}
           </span>
-          <button className="btn ghost" onClick={togglePrivate} aria-pressed={hidden} title={hidden ? "Mostrar valores (Shift+P)" : "Ocultar valores (Shift+P)"}
-            aria-label={hidden ? "Mostrar valores" : "Ocultar valores"}>{hidden ? <EyeOff size={15} /> : <Eye size={15} />}</button>
-          {noConnection
-            ? <NavLink className="btn primary" to="/conexoes"><PlugZap size={14} /> Conectar banco</NavLink>
-            : <button className="btn" onClick={() => startSync.mutate()} disabled={running} title="Buscar novidades nos bancos agora">
-                <RefreshCw size={14} className={running ? "spin" : ""} /> <span className="hide-sm">Sincronizar</span></button>}
+          <span className="top-actions">{privacyBtn}{syncBtn}</span>
         </header>
         <main className="content" key={hidden ? "oculto" : "visivel"}>
           {DEMO && <div className="callout info demo-note" role="note"><div className="grow"><b>Demonstração.</b> Pessoa, banco e valores são fictícios.
