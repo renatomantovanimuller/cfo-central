@@ -19,3 +19,5 @@ curadoria/*.json
 node_modules/
 .env.*
 !.env.example
+
+docs/tailscale.txt

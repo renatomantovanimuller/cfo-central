@@ -121,3 +121,21 @@ analytics, alerts, api), `frontend/` (React + Vite + ECharts), `migrations/` (Al
 - A Pluggy não informa custo médio de ETFs/ações do Nubank: resultado por ativo aparece só quando há custo (v1.1: notas de corretagem/B3).
 - Retorno realizado (TWR) começa a contar do primeiro snapshot diário; antes disso, a carteira usa histórico com pesos atuais (ex-ante, marcado como proxy).
 - Meses anteriores ao primeiro snapshot no Balanço são reconstruídos a partir dos lançamentos (marcados como estimados).
+
+## Na nuvem (acesso de qualquer lugar)
+
+O app pode rodar 24/7 numa VM gratuita da Oracle (Always Free, ARM), acessível só pela sua rede Tailscale, com HTTPS
+e sem nenhuma porta aberta na internet. Passo a passo, segurança e backups em [`deploy/README.md`](deploy/README.md);
+`NUVEM-LEVAR.bat` faz a migração e `NUVEM-PUBLICAR.bat` envia atualizações de código.
+
+## No celular (Tailscale, com o PC ligado)
+
+`TAILSCALE-CELULAR.bat` liga o Tailscale e publica o app em `https://<nome-do-pc>.<sua-tailnet>.ts.net`, com HTTPS e
+visível só para os aparelhos da sua conta Tailscale (nenhuma porta aberta na internet; Funnel desligado). A configuração
+fica salva e volta sozinha depois de reiniciar o PC. Para desligar: `TAILSCALE-CELULAR.bat desligar`.
+O resultado de cada execução fica em `docs\tailscale.txt`.
+
+## Notificações no celular e vale-refeição
+
+- **Notificações:** em Configurações › Notificações no celular, toque em “Ativar neste aparelho” (no iPhone, antes adicione o app à Tela de Início). Usa Web Push: a mensagem sai cifrada do PC para o serviço de push do celular; nenhuma porta é aberta.
+- **VR/VA:** cartões de benefício não têm Open Finance. Em Configurações › Vale-refeição e alimentação, informe valor, dia do crédito e reajustes; o app lança crédito e consumo mensais no razão (fora do caixa) e avisa se a Pluggy passar a ter conector.

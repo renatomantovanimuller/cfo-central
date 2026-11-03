@@ -1,0 +1,15 @@
+# Sobreposição para a VM na nuvem. Nada fica exposto fora do localhost: o acesso é só pela tailnet
+# (tailscale serve → https://cfo-central.<sua-tailnet>.ts.net → 127.0.0.1:8060).
+# Uso: docker compose -f docker-compose.yml -f deploy/docker-compose.cloud.yml up -d --build
+services:
+  db:
+    ports: !reset []          # sem porta do Postgres no host
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=40"]
+    mem_limit: 1g
+  app:
+    environment:
+      COOKIE_SECURE: "true"   # sessão só trafega em HTTPS
+    mem_limit: 2g
+  backup:
+    environment:
+      KEEP_DAYS: "21"

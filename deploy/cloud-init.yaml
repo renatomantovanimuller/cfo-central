@@ -1,0 +1,23 @@
+#cloud-config
+# Script de inicialização da VM (Oracle: Create instance > Show advanced options > Management >
+# "Paste cloud-init script"). Antes de colar, troque COLE_AQUI_A_AUTH_KEY pela chave gerada em
+# https://login.tailscale.com/admin/settings/keys (Generate auth key; "Reusable" desligado).
+package_update: true
+package_upgrade: true
+packages: [ca-certificates, curl, git, age, rclone, unattended-upgrades]
+swap:
+  filename: /swapfile
+  size: 4G
+write_files:
+  - path: /etc/sysctl.d/99-cfo.conf
+    content: |
+      vm.swappiness=10
+runcmd:
+  - curl -fsSL https://get.docker.com | sh
+  - usermod -aG docker ubuntu
+  - curl -fsSL https://tailscale.com/install.sh | sh
+  - tailscale up --authkey=COLE_AQUI_A_AUTH_KEY --hostname=cfo-central
+  - mkdir -p /opt/cfo-central
+  - chown ubuntu:ubuntu /opt/cfo-central
+  - systemctl enable --now unattended-upgrades
+  - sysctl --system

@@ -32,16 +32,18 @@ services:
       - "127.0.0.1:8060:8000"
     restart: unless-stopped
 
-  backup:   # pg_dump diário em ./backups, mantém 30 dias
+  backup:   # pg_dump diário em ./backups, conferido antes de entrar no lugar; mantém 30 dias
     image: postgres:16-alpine
     depends_on:
       db:
         condition: service_healthy
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:-cfo-local}
+      TZ: America/Sao_Paulo
     volumes:
       - ./backups:/backups
-    entrypoint: ["/bin/sh", "-c", "while true; do f=/backups/cfo-$$(date +%Y%m%d-%H%M).dump; pg_dump -h db -U cfo -d cfo -Fc -f $$f && echo backup $$f && find /backups -name 'cfo-*.dump' -mtime +30 -delete; sleep 86400; done"]
+      - ./deploy/backup.sh:/backup.sh:ro
+    entrypoint: ["/bin/sh", "/backup.sh"]
     restart: unless-stopped
 
 volumes:
